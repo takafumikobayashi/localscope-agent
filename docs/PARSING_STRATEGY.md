@@ -29,12 +29,12 @@ or
 
 Candidate pattern:
 
-* ^[一-龥々]+[ 　]+[一-龥々]+
+* ^[\u4E00-\u9FFF々]+[ 　]+[\u4E00-\u9FFF々]+
 * Or lines ending with "議員", "市長", "議長"
 
 Regex example (conceptual):
 
-^([一-龥々]+(?:\s*[一-龥々]+)?)\s*(議員|市長|議長)?
+^([\u4E00-\u9FFF々]+(?:\s*[\u4E00-\u9FFF々]+)?)\s*(議員|市長|議長)?
 
 ---
 
