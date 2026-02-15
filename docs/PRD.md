@@ -262,4 +262,3 @@ Mid-term:
 * Replicable architecture
 * AI-driven policy trend analysis
 * Agent-readable civic knowledge
-

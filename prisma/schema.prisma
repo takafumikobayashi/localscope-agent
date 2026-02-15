@@ -1,0 +1,221 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// Core Entities (Phase 1)
+// ============================================================
+
+model Municipality {
+  id           String   @id @default(uuid()) @db.Uuid
+  nameJa       String   @map("name_ja")
+  nameEn       String?  @map("name_en")
+  prefectureJa String   @map("prefecture_ja")
+  codeJis      String?  @map("code_jis")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  sources   Source[]
+  sessions  Session[]
+  documents Document[]
+  speakers  Speaker[]
+
+  @@unique([prefectureJa, nameJa])
+  @@map("municipalities")
+}
+
+enum SourceType {
+  assembly_minutes
+  committee_minutes
+  public_comment
+  other
+}
+
+model Source {
+  id             String       @id @default(uuid()) @db.Uuid
+  municipalityId String       @map("municipality_id") @db.Uuid
+  sourceType     SourceType   @map("source_type")
+  title          String
+  url            String
+  isActive       Boolean      @default(true) @map("is_active")
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+
+  municipality Municipality @relation(fields: [municipalityId], references: [id])
+  documents    Document[]
+
+  @@index([municipalityId, sourceType, isActive])
+  @@map("sources")
+}
+
+enum SessionType {
+  regular
+  extra
+  committee
+  budget_committee
+  other
+}
+
+model Session {
+  id             String      @id @default(uuid()) @db.Uuid
+  municipalityId String      @map("municipality_id") @db.Uuid
+  fiscalYear     Int         @map("fiscal_year")
+  sessionName    String      @map("session_name")
+  sessionType    SessionType @map("session_type")
+  heldOn         DateTime?   @map("held_on") @db.Date
+  startOn        DateTime?   @map("start_on") @db.Date
+  endOn          DateTime?   @map("end_on") @db.Date
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+
+  municipality Municipality @relation(fields: [municipalityId], references: [id])
+  documents    Document[]
+  speeches     Speech[]
+
+  @@index([municipalityId, fiscalYear, sessionType])
+  @@map("sessions")
+}
+
+enum DocumentType {
+  minutes
+  committee_minutes
+  public_comment
+  report
+  other
+}
+
+enum DocumentStatus {
+  discovered
+  downloaded
+  extracted
+  parsed
+  failed
+}
+
+model Document {
+  id              String         @id @default(uuid()) @db.Uuid
+  municipalityId  String         @map("municipality_id") @db.Uuid
+  sourceId        String         @map("source_id") @db.Uuid
+  sessionId       String?        @map("session_id") @db.Uuid
+  documentType    DocumentType   @map("document_type")
+  title           String
+  url             String         @unique
+  publishedOn     DateTime?      @map("published_on") @db.Date
+  documentVersion String?        @map("document_version")
+  status          DocumentStatus @default(discovered)
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+
+  municipality  Municipality   @relation(fields: [municipalityId], references: [id])
+  source        Source         @relation(fields: [sourceId], references: [id])
+  session       Session?       @relation(fields: [sessionId], references: [id])
+  asset         DocumentAsset?
+  speeches      Speech[]
+
+  @@map("documents")
+}
+
+enum StorageProvider {
+  supabase_storage
+  s3
+  local
+  other
+}
+
+model DocumentAsset {
+  documentId      String          @id @map("document_id") @db.Uuid
+  storageProvider StorageProvider @map("storage_provider")
+  storagePath     String          @map("storage_path")
+  contentSha256   String          @map("content_sha256")
+  contentType     String          @map("content_type")
+  bytes           BigInt
+  downloadedAt    DateTime        @map("downloaded_at") @db.Timestamptz
+
+  document Document @relation(fields: [documentId], references: [id])
+
+  @@index([contentSha256])
+  @@map("document_assets")
+}
+
+enum SpeakerRole {
+  councilor
+  mayor
+  executive
+  chair
+  staff
+  unknown
+}
+
+model Speaker {
+  id             String      @id @default(uuid()) @db.Uuid
+  municipalityId String      @map("municipality_id") @db.Uuid
+  nameJa         String      @map("name_ja")
+  role           SpeakerRole @default(unknown)
+  party          String?
+  termStartOn    DateTime?   @map("term_start_on") @db.Date
+  termEndOn      DateTime?   @map("term_end_on") @db.Date
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+
+  municipality Municipality @relation(fields: [municipalityId], references: [id])
+  speeches     Speech[]
+
+  @@index([municipalityId, nameJa])
+  @@map("speakers")
+}
+
+model Speech {
+  id              String   @id @default(uuid()) @db.Uuid
+  documentId      String   @map("document_id") @db.Uuid
+  sessionId       String?  @map("session_id") @db.Uuid
+  speakerId       String?  @map("speaker_id") @db.Uuid
+  speakerNameRaw  String   @map("speaker_name_raw")
+  sequence        Int
+  speechText      String   @map("speech_text")
+  speechTextClean String?  @map("speech_text_clean")
+  pageStart       Int?     @map("page_start")
+  pageEnd         Int?     @map("page_end")
+  confidence      Float?
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  document Document @relation(fields: [documentId], references: [id])
+  session  Session? @relation(fields: [sessionId], references: [id])
+  speaker  Speaker? @relation(fields: [speakerId], references: [id])
+
+  @@index([documentId, sequence])
+  @@map("speeches")
+}
+
+// ============================================================
+// Operational
+// ============================================================
+
+enum IngestionTrigger {
+  manual
+  schedule
+  webhook
+}
+
+enum IngestionStatus {
+  success
+  partial
+  failed
+}
+
+model IngestionRun {
+  id             String           @id @default(uuid()) @db.Uuid
+  municipalityId String           @map("municipality_id") @db.Uuid
+  startedAt      DateTime         @default(now()) @map("started_at") @db.Timestamptz
+  finishedAt     DateTime?        @map("finished_at") @db.Timestamptz
+  trigger        IngestionTrigger
+  status         IngestionStatus?
+  log            Json?
+
+  @@index([municipalityId, startedAt(sort: Desc)])
+  @@map("ingestion_runs")
+}
