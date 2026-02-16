@@ -137,7 +137,6 @@ function matchSpeakerLine(
 
   if (bestMatch) {
     // rawは元のテキスト（スペース付き）から発言者部分を復元
-    const speakerNormalized = normalized.slice(0, bestMatch.endPos);
     const rawSpeaker = extractOriginalSpeaker(after, bestMatch.endPos);
     const rest = after.slice(rawSpeaker.length).trim();
     return { raw: rawSpeaker, rest };
@@ -167,9 +166,12 @@ function extractOriginalSpeaker(original: string, normalizedLen: number): string
 }
 
 /**
- * テキストをパースして発言者ごとのセグメントに分割する
+ * テキストをパースして発言者ごとのセグメントに分割する（純粋なテキストパーサー）
+ * 発言者の解決は SpeakerResolver で行う
  */
-export function parseSpeeches(pages: PageText[]): ParsedSpeech[] {
+export function parseSpeeches(
+  pages: PageText[],
+): ParsedSpeech[] {
   const lines = flattenPages(pages);
   const speeches: ParsedSpeech[] = [];
 
@@ -178,6 +180,7 @@ export function parseSpeeches(pages: PageText[]): ParsedSpeech[] {
     name: string;
     role: string;
     confidence: "high" | "medium" | "low";
+    fullName?: string;
   } | null = null;
   let currentLines: string[] = [];
   let currentPageStart = 0;
@@ -195,6 +198,7 @@ export function parseSpeeches(pages: PageText[]): ParsedSpeech[] {
           pageStart: currentPageStart,
           pageEnd: currentPageEnd,
           confidence: currentSpeaker.confidence,
+          fullName: currentSpeaker.fullName,
         });
       }
     }
@@ -213,9 +217,12 @@ export function parseSpeeches(pages: PageText[]): ParsedSpeech[] {
         flushSpeech();
 
         const parsed = parseSpeakerName(speaker.raw);
+
         currentSpeaker = {
           raw: speaker.raw,
-          ...parsed,
+          name: parsed.name,
+          role: parsed.role,
+          confidence: parsed.confidence,
         };
         currentPageStart = page;
         currentPageEnd = page;

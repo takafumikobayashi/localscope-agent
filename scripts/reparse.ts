@@ -1,34 +1,50 @@
 import "dotenv/config";
+import { prisma } from "../src/lib/prisma";
 import { extractText } from "../src/lib/ingestion/extractor";
 import { parseAttendees } from "../src/lib/ingestion/attendee-parser";
 import { parseSpeeches } from "../src/lib/ingestion/parser";
 import { SpeakerResolver } from "../src/lib/ingestion/speaker-resolver";
 import {
-  getDownloadedDocuments,
   upsertAttendees,
   loadAliasMap,
-  upsertSpeakerAlias,
   deleteSpeeches,
   createSpeech,
   updateDocumentStatus,
 } from "../src/lib/ingestion/db";
 
+/**
+ * 再パーススクリプト
+ *
+ * 1. parsed ドキュメントを downloaded に戻す
+ * 2. 全 downloaded ドキュメントを新ロジックで再パース（SpeakerResolver使用）
+ *
+ * 注: 孤立speaker削除は行わない（マスタ蓄積方針）
+ */
+
 const CONFIDENCE_MAP = { high: 1.0, medium: 0.7, low: 0.3 } as const;
 
 async function main() {
-  console.log("=== Extract & Parse ===");
+  console.log("=== Reparse: Speaker Alias Migration ===\n");
 
-  const docs = await getDownloadedDocuments();
-  console.log(`Found ${docs.length} document(s) with status=downloaded.`);
+  // Step 1: parsed → downloaded に戻す
+  const resetResult = await prisma.document.updateMany({
+    where: { status: "parsed" },
+    data: { status: "downloaded" },
+  });
+  console.log(`Step 1: Reset ${resetResult.count} document(s) from parsed → downloaded`);
 
-  if (docs.length === 0) {
-    console.log("Nothing to process.");
-    return;
-  }
+  // Step 2: 全 downloaded ドキュメントを再パース
+  const docs = await prisma.document.findMany({
+    where: { status: "downloaded" },
+    include: { asset: true },
+  });
+  console.log(`Step 2: Found ${docs.length} document(s) to reparse\n`);
 
   let processed = 0;
   let skipped = 0;
   let failed = 0;
+  let totalMatched = 0;
+  let totalUnmatched = 0;
 
   for (const doc of docs) {
     try {
@@ -40,45 +56,38 @@ async function main() {
 
       const filePath = doc.asset.storagePath;
       console.log(`  PROCESSING: ${doc.title}`);
-      console.log(`    File: ${filePath}`);
 
       // テキスト抽出
       const pages = await extractText(filePath);
-      console.log(`    Extracted ${pages.length} page(s)`);
 
       // 出席者リスト抽出
       const attendees = parseAttendees(pages);
-      console.log(`    Found ${attendees.length} attendee(s) in preamble`);
+      console.log(`    Attendees: ${attendees.length}`);
 
       // 出席者を speakers テーブルに upsert（alias も自動登録）
       const attendeeMap = await upsertAttendees(
         doc.municipalityId,
         attendees,
       );
-      console.log(`    Upserted ${attendeeMap.byFullName.size} speaker(s) from attendees`);
 
       // alias マップ読み込み
       const aliasMap = await loadAliasMap(doc.municipalityId);
-      console.log(`    Loaded ${aliasMap.size} alias(es)`);
 
       // SpeakerResolver 構築
       const resolver = new SpeakerResolver(attendeeMap, aliasMap);
 
       // パース（純粋なテキストパーサー）
       const speeches = parseSpeeches(pages);
-      console.log(`    Parsed ${speeches.length} speech(es)`);
+      console.log(`    Speeches: ${speeches.length}`);
 
       if (speeches.length === 0) {
-        console.log(`    WARN: No speeches found, skipping DB insert`);
+        console.log(`    WARN: No speeches found, skipping`);
         skipped++;
         continue;
       }
 
-      // 既存の発言を削除（べき等性）
-      const deleted = await deleteSpeeches(doc.id);
-      if (deleted > 0) {
-        console.log(`    Deleted ${deleted} existing speech(es)`);
-      }
+      // 既存の発言を削除
+      await deleteSpeeches(doc.id);
 
       // 発言者解決 & 発言登録
       let seq = 0;
@@ -91,16 +100,6 @@ async function main() {
           matched++;
         } else {
           unmatched++;
-          // 未解決の発言者名を alias として登録（speech_derived）
-          await upsertSpeakerAlias(
-            doc.municipalityId,
-            "", // speakerId が不明なので登録しない
-            speech.speakerName,
-            "speech_derived",
-            0.3,
-          ).catch(() => {
-            // speakerId が空なので alias 登録はスキップ
-          });
         }
 
         await createSpeech({
@@ -114,13 +113,14 @@ async function main() {
           confidence: CONFIDENCE_MAP[result.confidence],
         });
       }
+      totalMatched += matched;
+      totalUnmatched += unmatched;
       if (unmatched > 0) {
-        console.log(`    WARN: ${unmatched}/${speeches.length} speeches unmatched (speaker_id=NULL)`);
+        console.log(`    WARN: ${unmatched}/${speeches.length} unmatched`);
       }
 
-      // ステータス更新
       await updateDocumentStatus(doc.id, "parsed");
-      console.log(`    OK: ${speeches.length} speeches saved (matched: ${matched}, unmatched: ${unmatched})`);
+      console.log(`    OK`);
       processed++;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -131,13 +131,27 @@ async function main() {
 
   // サマリー
   console.log("\n=== Summary ===");
-  console.log(`Total:     ${docs.length}`);
+  console.log(`Documents: ${docs.length}`);
   console.log(`Processed: ${processed}`);
   console.log(`Skipped:   ${skipped}`);
   console.log(`Failed:    ${failed}`);
+
+  const totalSpeeches = totalMatched + totalUnmatched;
+  if (totalSpeeches > 0) {
+    const matchRate = ((totalMatched / totalSpeeches) * 100).toFixed(1);
+    console.log(`\nMatch rate: ${totalMatched}/${totalSpeeches} (${matchRate}%)`);
+  }
+
+  // 最終的な speakers 数を確認
+  const speakerCount = await prisma.speaker.count();
+  const aliasCount = await prisma.speakerAlias.count();
+  console.log(`\nSpeakers in DB: ${speakerCount}`);
+  console.log(`Aliases in DB: ${aliasCount}`);
 }
 
-main().catch((err) => {
-  console.error("Extract failed:", err);
-  process.exit(1);
-});
+main()
+  .catch((err) => {
+    console.error("Reparse failed:", err);
+    process.exit(1);
+  })
+  .finally(() => prisma.$disconnect());

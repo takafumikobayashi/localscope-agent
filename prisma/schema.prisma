@@ -151,6 +151,12 @@ enum SpeakerRole {
   unknown
 }
 
+enum AliasType {
+  attendee_derived // 出席者リストから自動生成
+  speech_derived   // ○行の発言者名から自動生成
+  manual           // 手動登録
+}
+
 model Speaker {
   id             String      @id @default(uuid()) @db.Uuid
   municipalityId String      @map("municipality_id") @db.Uuid
@@ -164,9 +170,28 @@ model Speaker {
 
   municipality Municipality @relation(fields: [municipalityId], references: [id])
   speeches     Speech[]
+  aliases      SpeakerAlias[]
 
-  @@index([municipalityId, nameJa])
+  @@unique([municipalityId, nameJa])
   @@map("speakers")
+}
+
+model SpeakerAlias {
+  id             String    @id @default(uuid()) @db.Uuid
+  municipalityId String    @map("municipality_id") @db.Uuid
+  speakerId      String    @map("speaker_id") @db.Uuid
+  aliasRaw       String    @map("alias_raw")
+  aliasNorm      String    @map("alias_norm")
+  aliasType      AliasType @map("alias_type")
+  confidence     Float?
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  speaker Speaker @relation(fields: [speakerId], references: [id])
+
+  @@unique([municipalityId, aliasNorm])
+  @@index([speakerId])
+  @@map("speaker_aliases")
 }
 
 model Speech {

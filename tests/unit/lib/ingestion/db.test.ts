@@ -21,6 +21,12 @@ const { mockPrisma } = vi.hoisted(() => ({
     documentAsset: {
       upsert: vi.fn(),
     },
+    speakerAlias: {
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
   },
 }));
 
@@ -36,6 +42,8 @@ import {
   upsertDocumentAsset,
   upsertMunicipality,
   upsertSource,
+  upsertSpeakerAlias,
+  loadAliasMap,
 } from "@/lib/ingestion/db";
 
 describe("db helpers", () => {
@@ -188,6 +196,126 @@ describe("db helpers", () => {
     expect(mockPrisma.document.update).toHaveBeenCalledWith({
       where: { id: "doc-1" },
       data: { status: "parsed" },
+    });
+  });
+});
+
+describe("speaker alias helpers", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe("upsertSpeakerAlias", () => {
+    it("creates new alias when not found", async () => {
+      mockPrisma.speakerAlias.findUnique.mockResolvedValue(null);
+      mockPrisma.speakerAlias.create.mockResolvedValue({});
+
+      await upsertSpeakerAlias("muni-1", "sp-1", "南澤克彦", "attendee_derived", 1.0);
+
+      expect(mockPrisma.speakerAlias.create).toHaveBeenCalledWith({
+        data: {
+          municipalityId: "muni-1",
+          speakerId: "sp-1",
+          aliasRaw: "南澤克彦",
+          aliasNorm: "南澤克彦",
+          aliasType: "attendee_derived",
+          confidence: 1.0,
+        },
+      });
+    });
+
+    it("normalizes spaces in aliasRaw", async () => {
+      mockPrisma.speakerAlias.findUnique.mockResolvedValue(null);
+      mockPrisma.speakerAlias.create.mockResolvedValue({});
+
+      await upsertSpeakerAlias("muni-1", "sp-1", "南 澤 克 彦", "attendee_derived", 1.0);
+
+      expect(mockPrisma.speakerAlias.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          aliasRaw: "南 澤 克 彦",
+          aliasNorm: "南澤克彦",
+        }),
+      });
+    });
+
+    it("skips empty alias", async () => {
+      await upsertSpeakerAlias("muni-1", "sp-1", "", "attendee_derived");
+
+      expect(mockPrisma.speakerAlias.findUnique).not.toHaveBeenCalled();
+      expect(mockPrisma.speakerAlias.create).not.toHaveBeenCalled();
+    });
+
+    it("does nothing when alias exists with same speakerId", async () => {
+      mockPrisma.speakerAlias.findUnique.mockResolvedValue({
+        id: "alias-1",
+        speakerId: "sp-1",
+        aliasType: "attendee_derived",
+      });
+
+      await upsertSpeakerAlias("muni-1", "sp-1", "南澤", "attendee_derived");
+
+      expect(mockPrisma.speakerAlias.create).not.toHaveBeenCalled();
+      expect(mockPrisma.speakerAlias.update).not.toHaveBeenCalled();
+    });
+
+    it("updates alias when new type has higher priority", async () => {
+      mockPrisma.speakerAlias.findUnique.mockResolvedValue({
+        id: "alias-1",
+        speakerId: "sp-old",
+        aliasType: "speech_derived",
+      });
+
+      await upsertSpeakerAlias("muni-1", "sp-new", "南澤", "attendee_derived", 0.9);
+
+      expect(mockPrisma.speakerAlias.update).toHaveBeenCalledWith({
+        where: { id: "alias-1" },
+        data: {
+          speakerId: "sp-new",
+          aliasRaw: "南澤",
+          aliasType: "attendee_derived",
+          confidence: 0.9,
+        },
+      });
+    });
+
+    it("does not update alias when new type has lower priority", async () => {
+      mockPrisma.speakerAlias.findUnique.mockResolvedValue({
+        id: "alias-1",
+        speakerId: "sp-old",
+        aliasType: "manual",
+      });
+
+      await upsertSpeakerAlias("muni-1", "sp-new", "南澤", "attendee_derived");
+
+      expect(mockPrisma.speakerAlias.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("loadAliasMap", () => {
+    it("returns aliasNorm → speakerId map", async () => {
+      mockPrisma.speakerAlias.findMany.mockResolvedValue([
+        { aliasNorm: "南澤克彦", speakerId: "sp-1" },
+        { aliasNorm: "南澤", speakerId: "sp-1" },
+        { aliasNorm: "大下正幸", speakerId: "sp-2" },
+      ]);
+
+      const map = await loadAliasMap("muni-1");
+
+      expect(map.size).toBe(3);
+      expect(map.get("南澤克彦")).toBe("sp-1");
+      expect(map.get("南澤")).toBe("sp-1");
+      expect(map.get("大下正幸")).toBe("sp-2");
+      expect(mockPrisma.speakerAlias.findMany).toHaveBeenCalledWith({
+        where: { municipalityId: "muni-1" },
+      });
+    });
+
+    it("returns empty map when no aliases", async () => {
+      mockPrisma.speakerAlias.findMany.mockResolvedValue([]);
+
+      const map = await loadAliasMap("muni-1");
+
+      expect(map.size).toBe(0);
     });
   });
 });

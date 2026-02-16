@@ -102,8 +102,6 @@ describe("matchSpeakerLine", () => {
   });
 
   it("事務局長+発言テキスト（組織名を含む役職は最短名マッチ）", () => {
-    // "農業委員会事務局長" は組織名+役職の複合パターン
-    // "委員" が先にマッチし、名前="稲田農業" となる既知の制限
     const result = matchSpeakerLine("○稲田農業委員会事務局長農業委員会事務局に係る要点を説明します。");
     expect(result).not.toBeNull();
     expect(result!.raw).toBe("稲田農業委員");
@@ -257,5 +255,19 @@ describe("parseSpeeches", () => {
     ];
     const speeches = parseSpeeches(pages);
     expect(speeches).toEqual([]);
+  });
+
+  it("fullName は設定されない（純粋テキストパーサー）", () => {
+    const pages: PageText[] = [
+      {
+        page: 3,
+        text: "○大 下 議 長\n　発言内容",
+      },
+    ];
+
+    const speeches = parseSpeeches(pages);
+    expect(speeches).toHaveLength(1);
+    expect(speeches[0].fullName).toBeUndefined();
+    expect(speeches[0].speakerName).toBe("大下");
   });
 });

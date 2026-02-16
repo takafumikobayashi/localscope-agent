@@ -1,6 +1,7 @@
 import { prisma } from "../prisma";
 import type { InputJsonValue } from "@/generated/prisma/internal/prismaNamespace";
-import type { SectionKind } from "./types";
+import type { SectionKind, Attendee } from "./types";
+import { normalizeAlias } from "./speaker-resolver";
 
 // ============================================================
 // Seed helpers
@@ -239,6 +240,85 @@ export async function upsertSpeaker(
   return speaker.id;
 }
 
+/** upsertAttendees の返り値 */
+export interface AttendeeMap {
+  /** familyName → speakerId（同姓重複は除外） */
+  byFamilyName: Map<string, string>;
+  /** fullName → speakerId */
+  byFullName: Map<string, string>;
+}
+
+/**
+ * 出席者リストから speakers テーブルに一括 upsert し、
+ * 出席者由来の alias（fullName, familyName）を自動登録する
+ */
+export async function upsertAttendees(
+  municipalityId: string,
+  attendees: Attendee[],
+): Promise<AttendeeMap> {
+  const byFamilyName = new Map<string, string>();
+  const byFullName = new Map<string, string>();
+
+  for (const attendee of attendees) {
+    const speakerRole = toSpeakerRole(attendee.role);
+
+    const existing = await prisma.speaker.findFirst({
+      where: { municipalityId, nameJa: attendee.fullName },
+    });
+
+    let speakerId: string;
+    if (existing) {
+      // roleがunknownから判明した場合は更新
+      if (existing.role === "unknown" && speakerRole !== "unknown") {
+        await prisma.speaker.update({
+          where: { id: existing.id },
+          data: { role: speakerRole },
+        });
+      }
+      speakerId = existing.id;
+    } else {
+      const speaker = await prisma.speaker.create({
+        data: { municipalityId, nameJa: attendee.fullName, role: speakerRole },
+      });
+      speakerId = speaker.id;
+    }
+
+    // fullName マップ（常に追加）
+    byFullName.set(attendee.fullName, speakerId);
+
+    // familyName マップ（同姓が複数いる場合はマップに含めない）
+    if (byFamilyName.has(attendee.familyName)) {
+      byFamilyName.set(attendee.familyName, "");
+    } else {
+      byFamilyName.set(attendee.familyName, speakerId);
+    }
+
+    // alias 登録（fullName, familyName）
+    await upsertSpeakerAlias(
+      municipalityId,
+      speakerId,
+      attendee.fullName,
+      "attendee_derived",
+      1.0,
+    );
+    // familyName は同姓でも登録（後で aliasMap では最初に登録された方が残る）
+    await upsertSpeakerAlias(
+      municipalityId,
+      speakerId,
+      attendee.familyName,
+      "attendee_derived",
+      0.8,
+    );
+  }
+
+  // 重複（空文字）エントリを除去
+  for (const [key, value] of byFamilyName) {
+    if (value === "") byFamilyName.delete(key);
+  }
+
+  return { byFamilyName, byFullName };
+}
+
 /**
  * ドキュメントに紐づく発言を全削除（再パース用のべき等性確保）
  */
@@ -275,4 +355,75 @@ export async function createSpeech(params: {
     },
   });
   return speech.id;
+}
+
+// ============================================================
+// Speaker Alias
+// ============================================================
+
+/**
+ * SpeakerAlias を upsert（municipalityId + aliasNorm でユニーク）
+ */
+export async function upsertSpeakerAlias(
+  municipalityId: string,
+  speakerId: string,
+  aliasRaw: string,
+  aliasType: "attendee_derived" | "speech_derived" | "manual",
+  confidence?: number,
+): Promise<void> {
+  const aliasNorm = normalizeAlias(aliasRaw);
+  if (aliasNorm.length === 0) return;
+
+  const existing = await prisma.speakerAlias.findUnique({
+    where: {
+      municipalityId_aliasNorm: { municipalityId, aliasNorm },
+    },
+  });
+
+  if (existing) {
+    // 既存のaliasが同じspeakerIdなら何もしない
+    // 異なるspeakerIdの場合、manual > attendee_derived > speech_derived の優先順で更新
+    if (existing.speakerId !== speakerId) {
+      const priority: Record<string, number> = {
+        manual: 3,
+        attendee_derived: 2,
+        speech_derived: 1,
+      };
+      if ((priority[aliasType] ?? 0) > (priority[existing.aliasType] ?? 0)) {
+        await prisma.speakerAlias.update({
+          where: { id: existing.id },
+          data: { speakerId, aliasRaw, aliasType, confidence },
+        });
+      }
+    }
+    return;
+  }
+
+  await prisma.speakerAlias.create({
+    data: {
+      municipalityId,
+      speakerId,
+      aliasRaw,
+      aliasNorm,
+      aliasType,
+      confidence,
+    },
+  });
+}
+
+/**
+ * municipality の全 alias を読み込んで aliasNorm → speakerId マップを返す
+ */
+export async function loadAliasMap(
+  municipalityId: string,
+): Promise<Map<string, string>> {
+  const aliases = await prisma.speakerAlias.findMany({
+    where: { municipalityId },
+  });
+
+  const map = new Map<string, string>();
+  for (const alias of aliases) {
+    map.set(alias.aliasNorm, alias.speakerId);
+  }
+  return map;
 }

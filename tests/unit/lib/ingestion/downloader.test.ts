@@ -11,7 +11,7 @@ import {
 } from "@/lib/ingestion/downloader";
 
 const ROOT_DIR = process.cwd();
-const PDF_DIR = path.join(ROOT_DIR, "data", "pdfs");
+const TEST_DATA_DIR = path.join(ROOT_DIR, ".test-data");
 
 function expectedSha256(content: Buffer): string {
   const hash = createHash("sha256");
@@ -19,11 +19,20 @@ function expectedSha256(content: Buffer): string {
   return hash.digest("hex");
 }
 
+// config の PDF_DIR をテスト用ディレクトリに差し替え
+vi.mock("@/lib/ingestion/config", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/ingestion/config")>();
+  return {
+    ...original,
+    PDF_DIR: path.join(process.cwd(), ".test-data", "pdfs"),
+  };
+});
+
 describe("downloader", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
-    rmSync(path.join(ROOT_DIR, "data"), { recursive: true, force: true });
+    rmSync(TEST_DATA_DIR, { recursive: true, force: true });
   });
 
   it("computes SHA-256 for local file", async () => {
@@ -65,11 +74,11 @@ describe("downloader", () => {
     const result = await downloadPdf(url);
 
     expect(fetchMock).toHaveBeenCalledWith(url);
-    expect(result.storagePath).toBe(path.join("data", "pdfs", "test minutes.pdf"));
+    expect(result.storagePath).toBe(path.join(TEST_DATA_DIR, "pdfs", "test minutes.pdf"));
     expect(result.bytes).toBe(content.byteLength);
     expect(result.sha256).toBe(expectedSha256(content));
 
-    const saved = await readFile(path.join(PDF_DIR, "test minutes.pdf"));
+    const saved = await readFile(path.join(TEST_DATA_DIR, "pdfs", "test minutes.pdf"));
     expect(saved.equals(content)).toBe(true);
   });
 
@@ -96,7 +105,7 @@ describe("downloader", () => {
   });
 
   it("creates download directory when missing", async () => {
-    rmSync(path.join(ROOT_DIR, "data"), { recursive: true, force: true });
+    rmSync(TEST_DATA_DIR, { recursive: true, force: true });
     const content = Buffer.from("pdf-data");
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -104,7 +113,7 @@ describe("downloader", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await downloadPdf("https://example.com/dir-check.pdf");
-    const saved = await readFile(path.join(ROOT_DIR, result.storagePath));
+    const saved = await readFile(result.storagePath);
     expect(saved.equals(content)).toBe(true);
   });
 });
