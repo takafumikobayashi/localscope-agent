@@ -111,11 +111,12 @@ model Document {
   createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz
 
-  municipality  Municipality   @relation(fields: [municipalityId], references: [id])
-  source        Source         @relation(fields: [sourceId], references: [id])
-  session       Session?       @relation(fields: [sessionId], references: [id])
+  municipality  Municipality      @relation(fields: [municipalityId], references: [id])
+  source        Source            @relation(fields: [sourceId], references: [id])
+  session       Session?          @relation(fields: [sessionId], references: [id])
   asset         DocumentAsset?
   speeches      Speech[]
+  summary       DocumentSummary?
 
   @@map("documents")
 }
@@ -140,6 +141,20 @@ model DocumentAsset {
 
   @@index([contentSha256])
   @@map("document_assets")
+}
+
+model DocumentSummary {
+  documentId  String   @id @map("document_id") @db.Uuid
+  summaryText String   @map("summary_text")
+  topics      Json
+  keyPoints   Json     @map("key_points")
+  modelId     String   @map("model_id")
+  tokenCount  Int      @map("token_count")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  document Document @relation(fields: [documentId], references: [id])
+
+  @@map("document_summaries")
 }
 
 enum SpeakerRole {
