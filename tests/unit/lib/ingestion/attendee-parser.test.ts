@@ -5,6 +5,7 @@ import {
   parseCouncilorLine,
   parseOfficialLine,
   guessFamilyNameFromNormalized,
+  truncateToName,
 } from "@/lib/ingestion/attendee-parser";
 import type { PageText } from "@/lib/ingestion/types";
 
@@ -107,6 +108,112 @@ describe("parseOfficialLine", () => {
     expect(result[0].role).toBe("事務局長");
     expect(result[0].category).toBe("staff");
     expect(result[1].role).toBe("書記");
+  });
+});
+
+describe("truncateToName", () => {
+  it("通常の名前はそのまま返す", () => {
+    expect(truncateToName("石丸伸二")).toBe("石丸伸二");
+  });
+
+  it("名前の後に組織名バイグラムが続く場合、そこで切る", () => {
+    expect(truncateToName("沖田伸二政策企画")).toBe("沖田伸二");
+  });
+
+  it("名前の後に未知の役職が続く場合、バイグラムで切れる", () => {
+    expect(truncateToName("沖田伸二政策企画課長黒田貢一")).toBe("沖田伸二");
+  });
+
+  it("3文字の名前はそのまま", () => {
+    expect(truncateToName("高藤誠")).toBe("高藤誠");
+  });
+
+  it("補佐接頭辞を除去して名前を抽出", () => {
+    expect(truncateToName("補佐小野光基社会環境課")).toBe("小野光基");
+  });
+
+  it("兼+既知役職の接頭辞を除去して名前を抽出", () => {
+    expect(truncateToName("兼福祉事務所長井上和志")).toBe("井上和志");
+  });
+
+  it("兼+未知役職（長で終わる）を除去して名前を抽出", () => {
+    expect(truncateToName("兼給食センター所長内藤麻妃")).toBe("内藤麻妃");
+  });
+
+  it("特殊文字（・）で切る", () => {
+    expect(truncateToName("田中太郎・次郎")).toBe("田中太郎");
+  });
+
+  it("特殊文字（（）で切る", () => {
+    expect(truncateToName("田中太郎（代理）")).toBe("田中太郎");
+  });
+});
+
+describe("parseOfficialLine - 未知役職パターン", () => {
+  it("未知の役職が挟まるケース", () => {
+    const result = parseOfficialLine(
+      "財政課長沖田伸二政策企画課長黒田貢一",
+      "executive",
+    );
+    // 「財政課長」と「課長」にマッチ。
+    // 財政課長の後の名前は「沖田伸二」（4文字）で切れるべき
+    const names = result.map((a) => a.fullName);
+    expect(names).toContain("沖田伸二");
+  });
+
+  it("事務局の次長パターン", () => {
+    const result = parseOfficialLine(
+      "事務局長高藤誠事務局次長國岡浩祐",
+      "staff",
+    );
+    const names = result.map((a) => a.fullName);
+    expect(names).toContain("高藤誠");
+  });
+
+  it("総務部長の後に未知の長い役職が続くケース", () => {
+    const result = parseOfficialLine(
+      "総務部長新谷洋子総務部政策統括監佐々木満朗",
+      "executive",
+    );
+    expect(result[0].fullName).toBe("新谷洋子");
+    expect(result[0].role).toBe("総務部長");
+  });
+
+  it("教育次長の後に未知の役職が続くケース", () => {
+    const result = parseOfficialLine(
+      "教育次長柳川知昭危機管理監神田正広",
+      "executive",
+    );
+    expect(result[0].fullName).toBe("柳川知昭");
+    expect(result[0].role).toBe("教育次長");
+  });
+
+  it("兼接頭辞ケース - 福祉保健部長兼福祉事務所長", () => {
+    const result = parseOfficialLine(
+      "福祉保健部長兼福祉事務所長井上和志",
+      "executive",
+    );
+    // 福祉保健部長の名前部分は「兼福祉事務所長井上和志」→ truncateToNameで「井上和志」
+    const names = result.map((a) => a.fullName);
+    expect(names).toContain("井上和志");
+  });
+
+  it("補佐接頭辞ケース", () => {
+    const result = parseOfficialLine(
+      "課長補佐小野光基",
+      "executive",
+    );
+    const names = result.map((a) => a.fullName);
+    expect(names).toContain("小野光基");
+  });
+
+  it("係長パターン", () => {
+    const result = parseOfficialLine(
+      "総務課長田中太郎総務係長日野貴恵",
+      "executive",
+    );
+    expect(result[0].fullName).toBe("田中太郎");
+    expect(result[0].role).toBe("総務課長");
   });
 });
 

@@ -289,10 +289,9 @@ function parseOfficialLine(line: string, category: SectionType): Attendee[] {
         ? rolePositions[i + 1].index
         : normalized.length;
 
-    const nameStr = normalized.slice(nameStart, nameEnd).trim();
+    const rawNameStr = normalized.slice(nameStart, nameEnd).trim();
+    const nameStr = truncateToName(rawNameStr);
     if (nameStr.length >= 2) {
-      // 名前部分のスペース区切りは元テキストから推定が難しいので
-      // normalizedから姓を推定する（2文字姓をデフォルト）
       const familyName = guessFamilyNameFromNormalized(nameStr);
 
       attendees.push({
@@ -305,6 +304,81 @@ function parseOfficialLine(line: string, category: SectionType): Attendee[] {
   }
 
   return attendees;
+}
+
+/**
+ * 組織・役職名の先頭に頻出するバイグラム。
+ * 人名の途中には出現しないため、名前の切断位置の判定に使う。
+ */
+const ROLE_BIGRAMS = new Set([
+  "総務", "政策", "企画", "事務", "社会", "福祉", "建設", "産業",
+  "教育", "危機", "財政", "会計", "水道", "農業", "消防", "子育",
+  "環境", "市民", "都市", "管理", "統括", "保健", "上下", "生活",
+]);
+
+/**
+ * 役職と次の役職の間のテキストから人名部分のみを抽出する。
+ * - `兼...` 接頭辞（兼務役職）を除去してから名前を抽出
+ * - `補佐` 接頭辞を除去してから名前を抽出
+ * - 組織名バイグラムが出現したらそこで切る
+ * - 特殊文字（`・`, `（`, `(`, 数字）が出現したらそこで切る
+ * - 最大6文字まで（日本人フルネームの上限）
+ */
+function truncateToName(raw: string): string {
+  let s = raw;
+
+  // 「補佐」始まり: 役職の一部なので除去
+  if (s.startsWith("補佐")) {
+    s = s.slice(2);
+  }
+
+  // 「兼」始まり: 兼務役職部分をスキップ
+  if (s.startsWith("兼")) {
+    s = s.slice(1); // 「兼」を除去
+    // KNOWN_ROLES のいずれかが s に含まれていたら、そのロール末尾以降を名前とする
+    let bestEnd = 0;
+    for (const role of KNOWN_ROLES) {
+      const idx = s.indexOf(role);
+      if (idx !== -1) {
+        const end = idx + role.length;
+        if (end > bestEnd) {
+          bestEnd = end;
+        }
+      }
+    }
+    // KNOWN_ROLES にヒットしなくても、「長」「監」「者」で終わる未知の役職を探す
+    if (bestEnd === 0) {
+      const roleEndMatch = s.match(/^.*?[長監者]/);
+      if (roleEndMatch) {
+        bestEnd = roleEndMatch[0].length;
+      }
+    }
+    if (bestEnd > 0) {
+      s = s.slice(bestEnd);
+    }
+  }
+
+  // 特殊文字で切る
+  const specialIdx = s.search(/[・（(0-9０-９]/);
+  if (specialIdx > 0) {
+    s = s.slice(0, specialIdx);
+  }
+
+  // 組織名バイグラムが出現したらそこで切る（位置2以降をチェック）
+  for (let i = 2; i < s.length - 1; i++) {
+    const bigram = s.slice(i, i + 2);
+    if (ROLE_BIGRAMS.has(bigram)) {
+      s = s.slice(0, i);
+      break;
+    }
+  }
+
+  // 最大6文字
+  if (s.length > 6) {
+    s = s.slice(0, 6);
+  }
+
+  return s;
 }
 
 /**
@@ -336,4 +410,5 @@ export {
   parseCouncilorLine,
   parseOfficialLine,
   guessFamilyNameFromNormalized,
+  truncateToName,
 };
