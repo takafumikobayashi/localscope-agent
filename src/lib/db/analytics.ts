@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
 
-export async function getWordFrequencies(limit = 200) {
+export async function getWordFrequencies(municipalityId: string, limit = 200) {
   return prisma.wordFrequency.findMany({
+    where: { municipalityId },
     orderBy: { count: "desc" },
     take: limit,
   });

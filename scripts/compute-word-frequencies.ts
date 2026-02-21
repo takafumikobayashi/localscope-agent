@@ -39,21 +39,10 @@ function loadTokenizer(): Promise<Tokenizer<IpadicFeatures>> {
   });
 }
 
-async function main() {
-  console.log("Loading kuromoji tokenizer...");
-  const tokenizer = await loadTokenizer();
-  console.log("Tokenizer loaded.");
-
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  const adapter = new PrismaPg(pool);
-  const prisma = new PrismaClient({ adapter });
-
-  const speeches = await prisma.speech.findMany({
-    select: { speechText: true },
-  });
-
-  console.log(`Processing ${speeches.length} speeches...`);
-
+function countWords(
+  tokenizer: Tokenizer<IpadicFeatures>,
+  speeches: { speechText: string }[],
+): Map<string, { reading: string | null; pos: string; count: number }> {
   const counts = new Map<string, { reading: string | null; pos: string; count: number }>();
 
   for (const speech of speeches) {
@@ -69,7 +58,6 @@ async function main() {
       const word = token.surface_form;
       if (word.length < MIN_WORD_LENGTH) continue;
       if (STOP_WORDS.has(word)) continue;
-      // Skip words that are only katakana/hiragana single chars or numbers
       if (/^[\d０-９]+$/.test(word)) continue;
 
       const existing = counts.get(word);
@@ -85,31 +73,64 @@ async function main() {
     }
   }
 
-  // Sort by count and take top N
-  const sorted = Array.from(counts.entries())
-    .sort((a, b) => b[1].count - a[1].count)
-    .slice(0, TOP_N);
+  return counts;
+}
 
-  console.log(`Found ${counts.size} unique words. Saving top ${sorted.length}...`);
+async function main() {
+  console.log("Loading kuromoji tokenizer...");
+  const tokenizer = await loadTokenizer();
+  console.log("Tokenizer loaded.");
 
-  // Clear existing and insert
-  await prisma.wordFrequency.deleteMany();
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const adapter = new PrismaPg(pool);
+  const prisma = new PrismaClient({ adapter });
 
-  for (const [word, data] of sorted) {
-    await prisma.wordFrequency.create({
-      data: {
-        word,
-        reading: data.reading,
-        partOfSpeech: data.pos,
-        count: data.count,
-      },
+  const municipalities = await prisma.municipality.findMany({
+    select: { id: true, nameJa: true },
+  });
+
+  console.log(`Processing ${municipalities.length} municipalities...`);
+
+  for (const municipality of municipalities) {
+    console.log(`\n[${municipality.nameJa}] Fetching speeches...`);
+
+    const speeches = await prisma.speech.findMany({
+      where: { document: { municipalityId: municipality.id } },
+      select: { speechText: true },
     });
-  }
 
-  console.log(`Saved ${sorted.length} word frequencies.`);
-  console.log("Top 20:");
-  for (const [word, data] of sorted.slice(0, 20)) {
-    console.log(`  ${word}: ${data.count}`);
+    console.log(`[${municipality.nameJa}] Processing ${speeches.length} speeches...`);
+
+    const counts = countWords(tokenizer, speeches);
+
+    const sorted = Array.from(counts.entries())
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, TOP_N);
+
+    console.log(`[${municipality.nameJa}] Found ${counts.size} unique words. Saving top ${sorted.length}...`);
+
+    // この自治体の既存データを削除して入れ替え
+    await prisma.wordFrequency.deleteMany({
+      where: { municipalityId: municipality.id },
+    });
+
+    for (const [word, data] of sorted) {
+      await prisma.wordFrequency.create({
+        data: {
+          municipalityId: municipality.id,
+          word,
+          reading: data.reading,
+          partOfSpeech: data.pos,
+          count: data.count,
+        },
+      });
+    }
+
+    console.log(`[${municipality.nameJa}] Saved ${sorted.length} word frequencies.`);
+    console.log(`[${municipality.nameJa}] Top 10:`);
+    for (const [word, data] of sorted.slice(0, 10)) {
+      console.log(`  ${word}: ${data.count}`);
+    }
   }
 
   await prisma.$disconnect();

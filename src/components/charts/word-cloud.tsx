@@ -7,19 +7,23 @@ interface WordData {
   count: number;
 }
 
-export function WordCloud() {
+interface WordCloudProps {
+  municipalityId: string;
+}
+
+export function WordCloud({ municipalityId }: WordCloudProps) {
   const [words, setWords] = useState<WordData[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/word-frequencies")
+    fetch(`/api/word-frequencies?municipalityId=${encodeURIComponent(municipalityId)}`)
       .then((r) => r.json())
       .then((data: WordData[]) => {
         setWords(data);
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, []);
+  }, [municipalityId]);
 
   if (loading) {
     return (

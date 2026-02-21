@@ -1,4 +1,11 @@
 import { prisma } from "@/lib/prisma";
+import { SessionType } from "@/generated/prisma/enums";
+
+const VALID_SESSION_TYPES = new Set<string>(Object.values(SessionType));
+
+function parseSessionType(value: string): SessionType | undefined {
+  return VALID_SESSION_TYPES.has(value) ? (value as SessionType) : undefined;
+}
 
 interface DocumentListFilters {
   fiscalYear?: number;
@@ -14,10 +21,13 @@ export async function getDocumentList(
   if (filters.fiscalYear) {
     where.session = { fiscalYear: filters.fiscalYear };
   }
-  if (filters.sessionType) {
+  const sessionType = filters.sessionType
+    ? parseSessionType(filters.sessionType)
+    : undefined;
+  if (sessionType) {
     where.session = {
       ...((where.session as Record<string, unknown>) ?? {}),
-      sessionType: filters.sessionType,
+      sessionType,
     };
   }
 

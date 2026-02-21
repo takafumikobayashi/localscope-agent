@@ -71,12 +71,18 @@ export async function getFileSize(filePath: string): Promise<number> {
 
 /**
  * URLからファイル名を生成
+ *
+ * URL全体のSHA-256先頭12文字をプレフィックスとして付与することで、
+ * 異なるURLが同一basename（例: "minutes.pdf"）を持つ場合の上書き衝突を防ぐ。
+ * 同じURLは常に同じファイル名になるため再実行しても冪等。
+ *
+ * 例: "a1b2c3d4e5f6_minutes.pdf"
  */
 function generateFilename(url: string): string {
   const urlPath = new URL(url).pathname;
-  const original = path.basename(urlPath);
-  // ファイル名がそのまま使えるならそのまま利用
-  return decodeURIComponent(original);
+  const original = decodeURIComponent(path.basename(urlPath));
+  const urlHash = createHash("sha256").update(url).digest("hex").slice(0, 12);
+  return `${urlHash}_${original}`;
 }
 
 /**

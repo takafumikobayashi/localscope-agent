@@ -30,7 +30,7 @@ export default async function AnalyticsPage({ params }: Props) {
           <h2 className="font-mono text-sm font-bold text-foreground mb-4">
             ワードクラウド
           </h2>
-          <WordCloud />
+          <WordCloud municipalityId={municipalityId} />
         </Card>
 
         {/* Topic Trends */}

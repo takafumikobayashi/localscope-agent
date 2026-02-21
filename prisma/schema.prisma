@@ -20,10 +20,11 @@ model Municipality {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
-  sources   Source[]
-  sessions  Session[]
-  documents Document[]
-  speakers  Speaker[]
+  sources         Source[]
+  sessions        Session[]
+  documents       Document[]
+  speakers        Speaker[]
+  wordFrequencies WordFrequency[]
 
   @@unique([prefectureJa, nameJa])
   @@map("municipalities")
@@ -265,14 +266,17 @@ model IngestionRun {
 // ============================================================
 
 model WordFrequency {
-  id            String   @id @default(uuid()) @db.Uuid
-  word          String
-  reading       String?
-  partOfSpeech  String   @map("part_of_speech")
-  count         Int
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  id             String   @id @default(uuid()) @db.Uuid
+  municipalityId String   @map("municipality_id") @db.Uuid
+  word           String
+  reading        String?
+  partOfSpeech   String   @map("part_of_speech")
+  count          Int
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  @@unique([word])
-  @@index([count(sort: Desc)])
+  municipality Municipality @relation(fields: [municipalityId], references: [id])
+
+  @@unique([municipalityId, word])
+  @@index([municipalityId, count(sort: Desc)])
   @@map("word_frequencies")
 }
