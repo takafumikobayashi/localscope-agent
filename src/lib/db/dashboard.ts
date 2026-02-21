@@ -1,19 +1,20 @@
 import { prisma } from "@/lib/prisma";
 
-export async function getDashboardStats() {
+export async function getDashboardStats(municipalityId: string) {
   const [totalDocuments, totalSpeeches, totalSpeakers, totalSummaries] =
     await Promise.all([
-      prisma.document.count(),
-      prisma.speech.count(),
-      prisma.speaker.count(),
-      prisma.documentSummary.count(),
+      prisma.document.count({ where: { municipalityId } }),
+      prisma.speech.count({ where: { document: { municipalityId } } }),
+      prisma.speaker.count({ where: { municipalityId } }),
+      prisma.documentSummary.count({ where: { document: { municipalityId } } }),
     ]);
 
   return { totalDocuments, totalSpeeches, totalSpeakers, totalSummaries };
 }
 
-export async function getRecentDocuments(limit = 10) {
+export async function getRecentDocuments(municipalityId: string, limit = 10) {
   return prisma.document.findMany({
+    where: { municipalityId },
     orderBy: { createdAt: "desc" },
     take: limit,
     include: {
@@ -23,8 +24,9 @@ export async function getRecentDocuments(limit = 10) {
   });
 }
 
-export async function getTopicFrequencies(limit = 15) {
+export async function getTopicFrequencies(municipalityId: string, limit = 15) {
   const summaries = await prisma.documentSummary.findMany({
+    where: { document: { municipalityId } },
     select: { topics: true },
   });
 
@@ -43,8 +45,9 @@ export async function getTopicFrequencies(limit = 15) {
     .slice(0, limit);
 }
 
-export async function getSpeakerRanking(limit = 15) {
+export async function getSpeakerRanking(municipalityId: string, limit = 15) {
   const speakers = await prisma.speaker.findMany({
+    where: { municipalityId },
     select: {
       nameJa: true,
       role: true,

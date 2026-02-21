@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { NavBar } from "@/components/layout/nav-bar";
-import { Footer } from "@/components/layout/footer";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,10 +12,39 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Priority: 明示指定 > Vercel 自動注入（本番URL）> ローカル開発
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : "http://localhost:3000");
+const OG_IMAGE_URL = process.env.NEXT_PUBLIC_OG_IMAGE_URL; // e.g. https://xxxx.cloudfront.net/og.png
+const DEFAULT_DESCRIPTION =
+  "地方議会の会議録を自動収集・AI 要約・可視化するシビックインテリジェンス基盤。誰が・何を・どれだけ話したかを市民の手に届ける。";
+
+const ogImages = OG_IMAGE_URL
+  ? [{ url: OG_IMAGE_URL, width: 1200, height: 630, alt: "LocalScope Agent" }]
+  : [];
+
 export const metadata: Metadata = {
-  title: "LocalScope Agent",
-  description:
-    "地方自治体の議会会議録を構造化し、人間とAIの双方が読解可能にする市政インテリジェンス基盤",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "LocalScope Agent",
+    template: "%s | LocalScope Agent",
+  },
+  description: DEFAULT_DESCRIPTION,
+  openGraph: {
+    siteName: "LocalScope Agent",
+    locale: "ja_JP",
+    type: "website",
+    description: DEFAULT_DESCRIPTION,
+    images: ogImages,
+  },
+  twitter: {
+    card: "summary_large_image",
+    description: DEFAULT_DESCRIPTION,
+    images: OG_IMAGE_URL ? [OG_IMAGE_URL] : [],
+  },
 };
 
 export default function RootLayout({
@@ -28,13 +55,9 @@ export default function RootLayout({
   return (
     <html lang="ja" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased scanline min-h-screen flex flex-col`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased scanline`}
       >
-        <NavBar />
-        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8">
-          {children}
-        </main>
-        <Footer />
+        {children}
       </body>
     </html>
   );

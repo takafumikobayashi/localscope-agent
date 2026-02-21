@@ -5,8 +5,11 @@ interface DocumentListFilters {
   sessionType?: string;
 }
 
-export async function getDocumentList(filters: DocumentListFilters = {}) {
-  const where: Record<string, unknown> = {};
+export async function getDocumentList(
+  municipalityId: string,
+  filters: DocumentListFilters = {},
+) {
+  const where: Record<string, unknown> = { municipalityId };
 
   if (filters.fiscalYear) {
     where.session = { fiscalYear: filters.fiscalYear };
@@ -29,8 +32,8 @@ export async function getDocumentList(filters: DocumentListFilters = {}) {
   });
 }
 
-export async function getDocumentDetail(id: string) {
-  return prisma.document.findUnique({
+export async function getDocumentDetail(municipalityId: string, id: string) {
+  const doc = await prisma.document.findUnique({
     where: { id },
     include: {
       session: true,
@@ -43,9 +46,22 @@ export async function getDocumentDetail(id: string) {
       },
     },
   });
+
+  if (!doc || doc.municipalityId !== municipalityId) return null;
+  return doc;
 }
 
-export async function getDocumentSpeakerBreakdown(documentId: string) {
+export async function getDocumentSpeakerBreakdown(
+  municipalityId: string,
+  documentId: string,
+) {
+  // Verify the document belongs to the municipality
+  const doc = await prisma.document.findUnique({
+    where: { id: documentId },
+    select: { municipalityId: true },
+  });
+  if (!doc || doc.municipalityId !== municipalityId) return [];
+
   const speeches = await prisma.speech.groupBy({
     by: ["speakerId"],
     where: { documentId },
@@ -72,8 +88,9 @@ export async function getDocumentSpeakerBreakdown(documentId: string) {
     .sort((a, b) => b.count - a.count);
 }
 
-export async function getAvailableFiscalYears() {
+export async function getAvailableFiscalYears(municipalityId: string) {
   const sessions = await prisma.session.findMany({
+    where: { municipalityId },
     select: { fiscalYear: true },
     distinct: ["fiscalYear"],
     orderBy: { fiscalYear: "desc" },
@@ -81,8 +98,9 @@ export async function getAvailableFiscalYears() {
   return sessions.map((s) => s.fiscalYear);
 }
 
-export async function getAvailableSessionTypes() {
+export async function getAvailableSessionTypes(municipalityId: string) {
   const sessions = await prisma.session.findMany({
+    where: { municipalityId },
     select: { sessionType: true },
     distinct: ["sessionType"],
   });

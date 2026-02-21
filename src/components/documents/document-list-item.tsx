@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Tag } from "@/components/ui/tag";
 
 interface DocumentListItemProps {
+  municipalityId: string;
   id: string;
   title: string;
   speechCount: number;
@@ -13,6 +14,7 @@ interface DocumentListItemProps {
 }
 
 export function DocumentListItem({
+  municipalityId,
   id,
   title,
   speechCount,
@@ -22,7 +24,7 @@ export function DocumentListItem({
   sessionName,
 }: DocumentListItemProps) {
   return (
-    <Link href={`/documents/${id}`}>
+    <Link href={`/${municipalityId}/documents/${id}`}>
       <Card className="hover:border-accent/30 transition-colors group">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">

@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback } from "react";
 
 interface DocumentFiltersProps {
+  municipalityId: string;
   fiscalYears: number[];
   sessionTypes: string[];
 }
@@ -17,6 +18,7 @@ const sessionTypeLabels: Record<string, string> = {
 };
 
 export function DocumentFilters({
+  municipalityId,
   fiscalYears,
   sessionTypes,
 }: DocumentFiltersProps) {
@@ -34,9 +36,9 @@ export function DocumentFilters({
       } else {
         params.delete(key);
       }
-      router.push(`/documents?${params.toString()}`);
+      router.push(`/${municipalityId}/documents?${params.toString()}`);
     },
-    [router, searchParams],
+    [router, searchParams, municipalityId],
   );
 
   return (

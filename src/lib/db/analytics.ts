@@ -7,8 +7,9 @@ export async function getWordFrequencies(limit = 200) {
   });
 }
 
-export async function getTopicTrends() {
+export async function getTopicTrends(municipalityId: string) {
   const summaries = await prisma.documentSummary.findMany({
+    where: { document: { municipalityId } },
     select: {
       topics: true,
       document: {
@@ -64,15 +65,16 @@ export async function getTopicTrends() {
   };
 }
 
-export async function getSpeakerStats() {
+export async function getSpeakerStats(municipalityId: string, limit = 30) {
   const speakers = await prisma.speaker.findMany({
+    where: { municipalityId },
     select: {
       nameJa: true,
       role: true,
       _count: { select: { speeches: true } },
     },
     orderBy: { speeches: { _count: "desc" } },
-    take: 30,
+    take: limit,
   });
 
   return speakers.map((s) => ({
