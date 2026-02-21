@@ -58,7 +58,7 @@ async function callLLM(
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       const result = await generateText({
-        model: openai(MODEL_ID, { structuredOutputs: true }),
+        model: openai(MODEL_ID),
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userContent },

@@ -259,3 +259,20 @@ model IngestionRun {
   @@index([municipalityId, startedAt(sort: Desc)])
   @@map("ingestion_runs")
 }
+
+// ============================================================
+// Analytics (Phase 3)
+// ============================================================
+
+model WordFrequency {
+  id            String   @id @default(uuid()) @db.Uuid
+  word          String
+  reading       String?
+  partOfSpeech  String   @map("part_of_speech")
+  count         Int
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@unique([word])
+  @@index([count(sort: Desc)])
+  @@map("word_frequencies")
+}

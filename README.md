@@ -7,7 +7,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Vitest](https://img.shields.io/badge/Vitest-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
 
-地方自治体の公開会議録（PDF）を収集し、テキスト抽出・発言分割・発言者紐付けを行って、機械可読なデータへ変換するプロジェクトです。
+地方自治体の公開会議録（PDF）を収集し、テキスト抽出・発言分割・発言者紐付けを行って、機械可読なデータへ変換するプロジェクトです。AI要約・単語頻度分析・Web UIによる可視化まで一貫して提供します。
 
 ## 現在の実装範囲
 
@@ -22,6 +22,9 @@
 - `speakers` への upsert（`(municipality_id, name_ja)` UNIQUE制約）
 - `speaker_aliases` への alias 自動登録（出席者由来）
 - `speeches` への保存（解決済み `speaker_id` 紐付け）
+- AI要約バッチ生成（GPT-4o、チャンク分割＋統合対応）
+- 単語頻度計算（kuromoji による日本語形態素解析）
+- Web UI（ダッシュボード・議事録一覧・詳細・Analytics）
 
 ## アーキテクチャ
 
@@ -56,6 +59,9 @@
 - PostgreSQL（Supabase想定）
 - Cheerio（スクレイピング）
 - pdfjs-dist（PDFテキスト抽出）
+- AI SDK (`ai`, `@ai-sdk/openai`) + GPT-4o（AI要約）
+- kuromoji（日本語形態素解析・単語頻度）
+- recharts（グラフ描画）
 - Vitest（ユニットテスト）
 
 ## セットアップ
@@ -126,6 +132,18 @@ npm run import-local -- --dir=./path/to/pdfs --year=R6
 npm run extract
 ```
 
+1. AI要約生成
+
+```bash
+npm run summarize
+```
+
+1. 単語頻度計算
+
+```bash
+npm run compute-words
+```
+
 ## npm scripts 一覧
 
 - `npm run dev`:
@@ -142,6 +160,10 @@ npm run extract
   手元PDFを `data/pdfs` へ取り込み
 - `npm run extract`:
   `status=downloaded` の文書を対象に抽出・パース・DB保存
+- `npm run summarize`:
+  `status=parsed` かつ未要約の文書を対象に GPT-4o で要約生成
+- `npm run compute-words`:
+  全 `speeches` を kuromoji で形態素解析し `word_frequencies` に保存
 - `npm run lint`:
   ESLint + Markdown lint
 - `npm run lint:fix`:
@@ -207,6 +229,29 @@ npm run extract
 - 発言が0件の場合は登録スキップ
 - confidence は `high=1.0`, `medium=0.7`, `low=0.3`
 
+### `npm run summarize`
+
+対象:
+
+- `status=parsed` かつ `document_summaries` が未作成の文書
+
+処理:
+
+- 発言テキストを結合し、トークン数を概算（文字数 × 0.5）
+- 12,000トークン以下: 1回のAPI呼び出しで要約
+- 超過時: チャンク分割 → 各チャンク要約 → 統合要約
+- レート制限時は指数バックオフ（30s × 2^n）でリトライ（最大5回）
+- 結果を `document_summaries`（summaryText, topics, keyPoints, modelId, tokenCount）に保存
+
+### `npm run compute-words`
+
+処理:
+
+- 全 `speeches.speech_text` を kuromoji で形態素解析
+- 名詞・動詞・形容詞を抽出し、ストップワード除去
+- 単語・読み・品詞ごとに出現頻度を集計
+- `word_frequencies` テーブルを全件置換（upsert）
+
 ### 補助スクリプト（`package.json` 未登録）
 
 以下は `npx tsx scripts/<name>.ts` で直接実行:
@@ -255,6 +300,8 @@ npx tsx scripts/reparse.ts            # 再パース
 - `speakers` — 発言者マスタ（`UNIQUE(municipality_id, name_ja)`）
 - `speaker_aliases` — 発言者エイリアス辞書（`UNIQUE(municipality_id, alias_norm)`）
 - `speeches` — 発言データ
+- `document_summaries` — AI要約（summaryText, topics, keyPoints, modelId, tokenCount）
+- `word_frequencies` — 単語頻度（word, reading, partOfSpeech, count）
 - `ingestion_runs` — 取り込み実行ログ
 
 `speaker_aliases.alias_type`:
@@ -286,14 +333,28 @@ npm test
 - `db` — DB操作ヘルパー（alias upsert/load 含む）
 - `migrate-speakers` — 重複統合ロジック
 
+## Web UI
+
+`npm run dev` で起動後、以下のページが利用可能:
+
+| パス | 概要 |
+|---|---|
+| `/` | ダッシュボード — 総件数統計・直近議事録・頻出トピックチャート・発言者ランキング |
+| `/documents` | 議事録一覧 — 年度・会議種別フィルタ付き |
+| `/documents/[id]` | 議事録詳細 — AI要約・Key Points・発言タイムライン・発言者内訳 |
+| `/analytics` | Analytics — ワードクラウド・トピック推移（年度別）・発言者統計 |
+
 ## 主要ディレクトリ
 
 - `docs/`: PRD / ERD / パース戦略 / ワークフロー
 - `prisma/`: スキーマとマイグレーション
-- `scripts/`: seed / ingest / import-local / extract / reparse / migrate-speakers
+- `scripts/`: seed / ingest / import-local / extract / summarize / compute-word-frequencies / reparse / migrate-speakers
 - `src/lib/ingestion/`: 収集・抽出・パース・発言者解決・DB処理
+- `src/lib/summarization/`: AI要約ロジック
+- `src/lib/db/`: ダッシュボード・文書・Analytics クエリ層
+- `src/components/`: UI コンポーネント（charts / documents / layout / ui）
 - `tests/unit/`: ユニットテスト
-- `src/app/`: Next.js アプリ
+- `src/app/`: Next.js アプリ（App Router）
 
 ## 参照ドキュメント
 

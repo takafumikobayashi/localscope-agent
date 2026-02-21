@@ -334,7 +334,7 @@ export async function deleteSpeeches(documentId: string): Promise<number> {
  */
 export async function createSpeech(params: {
   documentId: string;
-  speakerId: string;
+  speakerId: string | null;
   speakerNameRaw: string;
   sequence: number;
   speechText: string;
@@ -345,7 +345,7 @@ export async function createSpeech(params: {
   const speech = await prisma.speech.create({
     data: {
       documentId: params.documentId,
-      speakerId: params.speakerId,
+      speakerId: params.speakerId ?? undefined,
       speakerNameRaw: params.speakerNameRaw,
       sequence: params.sequence,
       speechText: params.speechText,
