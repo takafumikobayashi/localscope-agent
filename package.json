@@ -1,0 +1,53 @@
+{
+  "name": "localscope-agent-init",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint:js": "eslint",
+    "lint:md": "markdownlint-cli2 \"**/*.md\" \"#node_modules\" \"#.next\" \"#data\"",
+    "lint": "npm run lint:js && npm run lint:md",
+    "lint:fix": "npm run lint:js -- --fix && npm run lint:md -- --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "seed": "tsx scripts/seed.ts",
+    "ingest": "tsx scripts/ingest.ts",
+    "import-local": "tsx scripts/import-local.ts",
+    "extract": "tsx scripts/extract.ts",
+    "summarize": "tsx scripts/summarize.ts",
+    "compute-words": "tsx scripts/compute-word-frequencies.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^3.0.29",
+    "@prisma/adapter-pg": "^7.4.0",
+    "@prisma/client": "^7.4.0",
+    "ai": "^6.0.86",
+    "cheerio": "^1.2.0",
+    "dotenv": "^17.3.1",
+    "kuromoji": "^0.1.2",
+    "next": "16.1.6",
+    "pdfjs-dist": "^5.4.624",
+    "pg": "^8.18.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "recharts": "^3.7.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/kuromoji": "^0.1.3",
+    "@types/node": "^20",
+    "@types/pg": "^8.16.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "markdownlint-cli2": "^0.20.0",
+    "prisma": "^7.4.0",
+    "tailwindcss": "^4",
+    "tsx": "^4.21.0",
+    "typescript": "^5",
+    "vitest": "^4.0.18"
+  }
+}
