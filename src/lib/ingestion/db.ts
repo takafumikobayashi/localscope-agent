@@ -8,7 +8,7 @@ import { normalizeAlias } from "./speaker-resolver";
 // ============================================================
 
 /**
- * 自治体をupsert（prefecture + name の組み合わせでユニーク）
+ * 地方公共団体をupsert（prefecture + name の組み合わせでユニーク）
  */
 export async function upsertMunicipality(
   prefectureJa: string,
