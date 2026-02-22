@@ -482,9 +482,9 @@ export async function getGeneralQuestionBlocks(
         documentId: doc.documentId,
         sessionName: doc.document.session?.sessionName ?? "",
         fiscalYear: doc.document.session?.fiscalYear ?? 0,
-        speechCount: Math.round(blockSpeeches.length / n),
-        totalChars: Math.round(blockSpeeches.reduce((a, s) => a + s.speechText.length, 0) / n),
-        mayorResponses: Math.round(blockSpeeches.filter((s) => s.speaker?.role === "mayor").length / n),
+        speechCount: Math.floor(blockSpeeches.length / n),
+        totalChars: Math.floor(blockSpeeches.reduce((a, s) => a + s.speechText.length, 0) / n),
+        mayorResponses: Math.floor(blockSpeeches.filter((s) => s.speaker?.role === "mayor").length / n),
       });
     }
   }

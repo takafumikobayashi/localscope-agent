@@ -31,9 +31,13 @@ async function main() {
     orderBy: { createdAt: "asc" },
   });
 
-  const docs = allDocs.filter((d) => d.summary?.generalQuestions === null);
+  // null（抽出未実施）と空配列（チャンク1のみ処理されて質問が見つからなかった偽陰性）の両方をリトライ対象にする
+  const docs = allDocs.filter((d) => {
+    const gq = d.summary?.generalQuestions;
+    return gq === null || (Array.isArray(gq) && (gq as unknown[]).length === 0);
+  });
 
-  console.log(`Found ${docs.length} document(s) with generalQuestions = null.`);
+  console.log(`Found ${docs.length} document(s) with generalQuestions = null or [].`);
 
   if (docs.length === 0) {
     console.log("Nothing to retry.");

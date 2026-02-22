@@ -264,7 +264,12 @@ export function parseDateFromUrl(url: string): Date | null {
   const day = parseInt(match[3], 10);
   if (reiwaYear < 1 || month < 1 || month > 12 || day < 1 || day > 31) return null;
   const year = 2018 + reiwaYear;
-  return new Date(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+  const date = new Date(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+  // JavaScript は存在しない日付を繰り越すため、構築後に年月日が一致するか検証する
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() + 1 !== month || date.getUTCDate() !== day) {
+    return null;
+  }
+  return date;
 }
 
 /**
