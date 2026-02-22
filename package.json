@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -17,7 +18,14 @@
     "import-local": "tsx scripts/import-local.ts",
     "extract": "tsx scripts/extract.ts",
     "summarize": "tsx scripts/summarize.ts",
-    "compute-words": "tsx scripts/compute-word-frequencies.ts"
+    "backfill-published-on": "tsx scripts/backfill-published-on.ts",
+    "backfill-titles": "tsx scripts/backfill-titles.ts",
+    "backfill-sessions": "tsx scripts/backfill-sessions.ts",
+    "extract-questions": "tsx scripts/extract-general-questions.ts",
+    "retry-questions": "tsx scripts/retry-general-questions.ts",
+    "normalize-questioner-names": "tsx scripts/normalize-questioner-names.ts",
+    "reextract-questions": "tsx scripts/reextract-general-questions.ts",
+    "extract-agenda": "tsx scripts/extract-agenda-items.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.29",

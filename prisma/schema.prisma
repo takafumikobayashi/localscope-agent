@@ -24,7 +24,6 @@ model Municipality {
   sessions        Session[]
   documents       Document[]
   speakers        Speaker[]
-  wordFrequencies WordFrequency[]
 
   @@unique([prefectureJa, nameJa])
   @@map("municipalities")
@@ -145,13 +144,15 @@ model DocumentAsset {
 }
 
 model DocumentSummary {
-  documentId  String   @id @map("document_id") @db.Uuid
-  summaryText String   @map("summary_text")
-  topics      Json
-  keyPoints   Json     @map("key_points")
-  modelId     String   @map("model_id")
-  tokenCount  Int      @map("token_count")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  documentId        String   @id @map("document_id") @db.Uuid
+  summaryText       String   @map("summary_text")
+  topics            Json
+  keyPoints         Json     @map("key_points")
+  generalQuestions  Json?    @map("general_questions")
+  agendaItems       Json?    @map("agenda_items")
+  modelId           String   @map("model_id")
+  tokenCount        Int      @map("token_count")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   document Document @relation(fields: [documentId], references: [id])
 
@@ -261,22 +262,3 @@ model IngestionRun {
   @@map("ingestion_runs")
 }
 
-// ============================================================
-// Analytics (Phase 3)
-// ============================================================
-
-model WordFrequency {
-  id             String   @id @default(uuid()) @db.Uuid
-  municipalityId String   @map("municipality_id") @db.Uuid
-  word           String
-  reading        String?
-  partOfSpeech   String   @map("part_of_speech")
-  count          Int
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
-
-  municipality Municipality @relation(fields: [municipalityId], references: [id])
-
-  @@unique([municipalityId, word])
-  @@index([municipalityId, count(sort: Desc)])
-  @@map("word_frequencies")
-}

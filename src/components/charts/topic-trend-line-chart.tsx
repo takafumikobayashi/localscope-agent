@@ -1,8 +1,8 @@
 "use client";
 
 import {
-  BarChart,
-  Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -11,28 +11,39 @@ import {
 } from "recharts";
 
 const COLORS = [
-  "#00ff88", "#00cc6a", "#0088ff", "#ff6600",
-  "#ff0088", "#8800ff", "#ffcc00", "#00cccc",
+  "#00ff88",
+  "#00cc6a",
+  "#0088ff",
+  "#ff6600",
+  "#ff0088",
+  "#8800ff",
+  "#ffcc00",
+  "#00cccc",
 ];
 
-interface TopicTrendChartProps {
+interface TopicTrendLineChartProps {
   data: Record<string, number | string>[];
   topics: string[];
 }
 
-export function TopicTrendChart({ data, topics }: TopicTrendChartProps) {
+export function TopicTrendLineChart({ data, topics }: TopicTrendLineChartProps) {
   if (data.length === 0) {
     return (
       <p className="font-mono text-sm text-muted-foreground">
-        No trend data available.
+        トピックデータがありません
       </p>
     );
   }
 
   return (
     <ResponsiveContainer width="100%" height={400}>
-      <BarChart data={data}>
-        <XAxis dataKey="year" stroke="#666" fontSize={10} fontFamily="monospace" />
+      <LineChart data={data} margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+        <XAxis
+          dataKey="year"
+          stroke="#666"
+          fontSize={10}
+          fontFamily="monospace"
+        />
         <YAxis stroke="#666" fontSize={10} fontFamily="monospace" />
         <Tooltip
           contentStyle={{
@@ -44,19 +55,19 @@ export function TopicTrendChart({ data, topics }: TopicTrendChartProps) {
           }}
           labelStyle={{ color: "#ededed" }}
         />
-        <Legend
-          wrapperStyle={{ fontFamily: "monospace", fontSize: 10 }}
-        />
+        <Legend wrapperStyle={{ fontFamily: "monospace", fontSize: 10 }} />
         {topics.map((topic, i) => (
-          <Bar
+          <Line
             key={topic}
+            type="monotone"
             dataKey={topic}
-            stackId="a"
-            fill={COLORS[i % COLORS.length]}
-            fillOpacity={0.8}
+            stroke={COLORS[i % COLORS.length]}
+            strokeWidth={2}
+            dot={{ r: 3 }}
+            activeDot={{ r: 5 }}
           />
         ))}
-      </BarChart>
+      </LineChart>
     </ResponsiveContainer>
   );
 }
