@@ -65,14 +65,16 @@ async function main() {
 
   for (const link of links) {
     try {
-      // セッション情報を導出してupsert
+      // セッション情報を導出してupsert（URL から取得できる日付を startOn/endOn として渡す）
       const sessionInfo = deriveSessionInfo(link.url);
+      const publishedOn = parseDateFromUrl(link.url);
       const sessionId = sessionInfo
         ? await upsertSession(
             ctx.municipalityId,
             sessionInfo.sessionName,
             sessionInfo.sessionType,
             sessionInfo.fiscalYear,
+            { startOn: publishedOn, endOn: publishedOn },
           )
         : null;
 

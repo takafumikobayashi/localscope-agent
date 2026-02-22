@@ -170,8 +170,12 @@ export async function upsertSession(
 
   if (existing) {
     const updates: Record<string, unknown> = {};
-    if (!existing.startOn && dates?.startOn) updates.startOn = dates.startOn;
-    if (!existing.endOn && dates?.endOn) updates.endOn = dates.endOn;
+    // startOn: null 埋め、または既存より早い日付で上書き（複数文書を順不同で処理する場合に対応）
+    if (dates?.startOn && (!existing.startOn || dates.startOn < existing.startOn))
+      updates.startOn = dates.startOn;
+    // endOn: null 埋め、または既存より遅い日付で上書き（会期が延びるたびに更新）
+    if (dates?.endOn && (!existing.endOn || dates.endOn > existing.endOn))
+      updates.endOn = dates.endOn;
     if (!existing.heldOn && dates?.heldOn) updates.heldOn = dates.heldOn;
     if (Object.keys(updates).length > 0) {
       await prisma.session.update({ where: { id: existing.id }, data: updates });
