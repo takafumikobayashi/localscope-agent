@@ -10,6 +10,8 @@ function parseSessionType(value: string): SessionType | undefined {
 interface DocumentListFilters {
   fiscalYear?: number;
   sessionType?: string;
+  topic?: string;
+  gqTopic?: string;
 }
 
 export async function getDocumentList(
@@ -30,13 +32,25 @@ export async function getDocumentList(
       sessionType,
     };
   }
+  if (filters.topic) {
+    where.summary = {
+      ...((where.summary as Record<string, unknown>) ?? {}),
+      topics: { array_contains: [filters.topic] },
+    };
+  }
+  if (filters.gqTopic) {
+    where.summary = {
+      ...((where.summary as Record<string, unknown>) ?? {}),
+      generalQuestions: { array_contains: [{ topic: filters.gqTopic }] },
+    };
+  }
 
   return prisma.document.findMany({
     where,
     orderBy: { createdAt: "desc" },
     include: {
       session: { select: { fiscalYear: true, sessionName: true, sessionType: true } },
-      summary: { select: { summaryText: true, topics: true } },
+      summary: { select: { summaryText: true, topics: true, generalQuestions: true, agendaItems: true } },
       _count: { select: { speeches: true } },
     },
   });

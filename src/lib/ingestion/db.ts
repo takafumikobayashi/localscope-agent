@@ -97,6 +97,186 @@ function sectionKindToDocumentType(
 }
 
 /**
+ * URLスラッグから会議（セッション）情報を導出する
+ * 複数日にまたがる定例会の場合、日番号を除いたセッション名を返す
+ * 例: "rei-wa-6nen-daiyon-kai-teireikai-3r061217" → { sessionName: "令和6年第4回定例会", sessionType: "regular", fiscalYear: 2024 }
+ */
+export function deriveSessionInfo(url: string): {
+  sessionName: string;
+  sessionType: "regular" | "extra" | "committee" | "budget_committee" | "other";
+  fiscalYear: number;
+} | null {
+  const slug = (url.split("/").pop() ?? "").replace(/\.pdf$/i, "").toLowerCase();
+  const parts: string[] = [];
+
+  // 令和N年: まず "rei-wa-N-nen" を探し、なければ日付パターン "rNN" から導出
+  const reiwaExplicit = slug.match(/rei-?wa-?(\d+)-?nen/);
+  const reiwaFromDate = slug.match(/[_\-]?r(\d{2})\d{4}/);
+  const reiwaRaw = reiwaExplicit?.[1] ?? reiwaFromDate?.[1] ?? null;
+  if (!reiwaRaw) return null;
+  const reiwaYear = parseInt(reiwaRaw, 10);
+  parts.push(`令和${reiwaYear}年`);
+  const fiscalYear = 2018 + reiwaYear;
+
+  // 第N回
+  if (/daiikkai/.test(slug)) parts.push("第1回");
+  else if (/dai-?ni-?kai/.test(slug)) parts.push("第2回");
+  else if (/dai-?san-?kai/.test(slug)) parts.push("第3回");
+  else if (/dai-?yon-?kai/.test(slug)) parts.push("第4回");
+  else if (/dai-?go-?kai/.test(slug)) parts.push("第5回");
+  else { const numMatch = slug.match(/dai-(\d+)kai/); if (numMatch) parts.push(`第${numMatch[1]}回`); }
+
+  // 会議種別（定例会の日番号は除いてセッション名とする）
+  let sessionType: "regular" | "extra" | "committee" | "budget_committee" | "other" = "other";
+  if (/teireikai/.test(slug)) {
+    parts.push("定例会");
+    sessionType = "regular";
+  } else if (/rinji-?kai/.test(slug)) {
+    parts.push("臨時会");
+    sessionType = "extra";
+  } else if (/yosan-?kessan-?jounin-?iinkai/.test(slug)) {
+    parts.push("予算決算常任委員会");
+    sessionType = "budget_committee";
+  } else if (/soumu-?bunkyou-?jounin-?iinkai/.test(slug)) {
+    parts.push("総務文教常任委員会");
+    sessionType = "committee";
+  } else if (/sangyou-?kousei-?jounin-?iinkai/.test(slug)) {
+    parts.push("産業厚生常任委員会");
+    sessionType = "committee";
+  } else if (/iinkai/.test(slug)) {
+    parts.push("委員会");
+    sessionType = "committee";
+  } else {
+    return null;
+  }
+
+  return { sessionName: parts.join(""), sessionType, fiscalYear };
+}
+
+/**
+ * セッションをupsert（municipalityId + fiscalYear + sessionName でユニーク判定）
+ * dates.startOn/endOn は複数日にまたがる場合の期間。1日のみなら heldOn も設定する。
+ */
+export async function upsertSession(
+  municipalityId: string,
+  sessionName: string,
+  sessionType: "regular" | "extra" | "committee" | "budget_committee" | "other",
+  fiscalYear: number,
+  dates?: { startOn?: Date | null; endOn?: Date | null; heldOn?: Date | null },
+): Promise<string> {
+  const existing = await prisma.session.findFirst({
+    where: { municipalityId, fiscalYear, sessionName },
+  });
+
+  if (existing) {
+    const updates: Record<string, unknown> = {};
+    // startOn: null 埋め、または既存より早い日付で上書き（複数文書を順不同で処理する場合に対応）
+    if (dates?.startOn && (!existing.startOn || dates.startOn < existing.startOn))
+      updates.startOn = dates.startOn;
+    // endOn: null 埋め、または既存より遅い日付で上書き（会期が延びるたびに更新）
+    if (dates?.endOn && (!existing.endOn || dates.endOn > existing.endOn))
+      updates.endOn = dates.endOn;
+    if (!existing.heldOn && dates?.heldOn) updates.heldOn = dates.heldOn;
+    if (Object.keys(updates).length > 0) {
+      await prisma.session.update({ where: { id: existing.id }, data: updates });
+    }
+    return existing.id;
+  }
+
+  const session = await prisma.session.create({
+    data: {
+      municipalityId,
+      fiscalYear,
+      sessionName,
+      sessionType,
+      startOn: dates?.startOn ?? undefined,
+      endOn: dates?.endOn ?? undefined,
+      heldOn: dates?.heldOn ?? undefined,
+    },
+  });
+  return session.id;
+}
+
+/**
+ * URLスラッグから会議タイトルを導出する
+ * 例: "rei-wa-6nen-daiyon-kai-teireikai-3r061217" → "令和6年第4回定例会（第3日）"
+ * 導出できなければ null を返す
+ */
+export function deriveMeetingTitle(url: string): string | null {
+  const slug = (url.split("/").pop() ?? "").replace(/\.pdf$/i, "").toLowerCase();
+
+  const parts: string[] = [];
+
+  // 令和N年が含まれない場合は不完全なタイトルになるため null を返す
+  const reiwaMatch = slug.match(/rei-?wa-?(\d+)-?nen/);
+  if (!reiwaMatch) return null;
+  parts.push(`令和${reiwaMatch[1]}年`);
+
+  // 第N回（漢数字パターン → 数字パターンの順で検出）
+  if (/daiikkai/.test(slug)) {
+    parts.push("第1回");
+  } else if (/dai-?ni-?kai/.test(slug)) {
+    parts.push("第2回");
+  } else if (/dai-?san-?kai/.test(slug)) {
+    parts.push("第3回");
+  } else if (/dai-?yon-?kai/.test(slug)) {
+    parts.push("第4回");
+  } else if (/dai-?go-?kai/.test(slug)) {
+    parts.push("第5回");
+  } else {
+    const numMatch = slug.match(/dai-(\d+)kai/);
+    if (numMatch) parts.push(`第${numMatch[1]}回`);
+  }
+
+  // 会議種別（未一致の場合は不完全タイトルになるため null を返す）
+  let meetingTypeMatched = false;
+  if (/teireikai/.test(slug)) {
+    parts.push("定例会");
+    meetingTypeMatched = true;
+    // 複数日開催の場合の日番号: "teireikai-3r" / "teireikai3r" / "teireikai-10r"
+    const dayMatch = slug.match(/teireikai-?(\d+)r/);
+    if (dayMatch) parts.push(`（第${dayMatch[1]}日）`);
+  } else if (/rinji-?kai/.test(slug)) {
+    parts.push("臨時会");
+    meetingTypeMatched = true;
+  } else if (/yosan-?kessan-?jounin-?iinkai/.test(slug)) {
+    parts.push("予算決算常任委員会");
+    meetingTypeMatched = true;
+  } else if (/soumu-?bunkyou-?jounin-?iinkai/.test(slug)) {
+    parts.push("総務文教常任委員会");
+    meetingTypeMatched = true;
+  } else if (/sangyou-?kousei-?jounin-?iinkai/.test(slug)) {
+    parts.push("産業厚生常任委員会");
+    meetingTypeMatched = true;
+  } else if (/iinkai/.test(slug)) {
+    parts.push("委員会");
+    meetingTypeMatched = true;
+  }
+
+  return meetingTypeMatched ? parts.join("") : null;
+}
+
+/**
+ * URLのスラッグ `r{YY}{MM}{DD}` から公開日を解析する
+ * 例: "r060214" → 2024-02-14
+ */
+export function parseDateFromUrl(url: string): Date | null {
+  const match = url.match(/r(\d{2})(\d{2})(\d{2})(?:[_\-.]|$)/i);
+  if (!match) return null;
+  const reiwaYear = parseInt(match[1], 10);
+  const month = parseInt(match[2], 10);
+  const day = parseInt(match[3], 10);
+  if (reiwaYear < 1 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const year = 2018 + reiwaYear;
+  const date = new Date(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+  // JavaScript は存在しない日付を繰り越すため、構築後に年月日が一致するか検証する
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() + 1 !== month || date.getUTCDate() !== day) {
+    return null;
+  }
+  return date;
+}
+
+/**
  * ドキュメントをupsert（URLユニーク制約でべき等）
  * 新規の場合は status: discovered で作成
  */
@@ -106,14 +286,26 @@ export async function upsertDocument(params: {
   url: string;
   title: string;
   sectionKind: SectionKind;
+  publishedOn?: Date | null;
+  sessionId?: string | null;
 }): Promise<{ id: string; status: string; isNew: boolean }> {
   const documentType = sectionKindToDocumentType(params.sectionKind);
+  // URLから会議タイトルを導出し、取得できた場合はそちらを優先する
+  const derivedTitle = deriveMeetingTitle(params.url) ?? params.title;
 
   const existing = await prisma.document.findUnique({
     where: { url: params.url },
   });
 
   if (existing) {
+    // published_on・title・session_id が未整備の場合は補完する
+    const updates: Record<string, unknown> = {};
+    if (!existing.publishedOn && params.publishedOn) updates.publishedOn = params.publishedOn;
+    if (existing.title !== derivedTitle) updates.title = derivedTitle;
+    if (!existing.sessionId && params.sessionId) updates.sessionId = params.sessionId;
+    if (Object.keys(updates).length > 0) {
+      await prisma.document.update({ where: { id: existing.id }, data: updates });
+    }
     return { id: existing.id, status: existing.status, isNew: false };
   }
 
@@ -122,9 +314,11 @@ export async function upsertDocument(params: {
       municipalityId: params.municipalityId,
       sourceId: params.sourceId,
       url: params.url,
-      title: params.title,
+      title: derivedTitle,
       documentType,
       status: "discovered",
+      publishedOn: params.publishedOn ?? undefined,
+      sessionId: params.sessionId ?? undefined,
     },
   });
 
@@ -334,6 +528,7 @@ export async function deleteSpeeches(documentId: string): Promise<number> {
  */
 export async function createSpeech(params: {
   documentId: string;
+  sessionId?: string | null;
   speakerId: string | null;
   speakerNameRaw: string;
   sequence: number;
@@ -345,6 +540,7 @@ export async function createSpeech(params: {
   const speech = await prisma.speech.create({
     data: {
       documentId: params.documentId,
+      sessionId: params.sessionId ?? undefined,
       speakerId: params.speakerId ?? undefined,
       speakerNameRaw: params.speakerNameRaw,
       sequence: params.sequence,

@@ -10,6 +10,9 @@ import {
   upsertDocument,
   upsertDocumentAsset,
   updateDocumentStatus,
+  parseDateFromUrl,
+  deriveSessionInfo,
+  upsertSession,
 } from "../src/lib/ingestion/db";
 import type { IngestionContext } from "../src/lib/ingestion/types";
 
@@ -62,13 +65,28 @@ async function main() {
 
   for (const link of links) {
     try {
-      // ドキュメントupsert
+      // セッション情報を導出してupsert（URL から取得できる日付を startOn/endOn として渡す）
+      const sessionInfo = deriveSessionInfo(link.url);
+      const publishedOn = parseDateFromUrl(link.url);
+      const sessionId = sessionInfo
+        ? await upsertSession(
+            ctx.municipalityId,
+            sessionInfo.sessionName,
+            sessionInfo.sessionType,
+            sessionInfo.fiscalYear,
+            { startOn: publishedOn, endOn: publishedOn },
+          )
+        : null;
+
+      // ドキュメントupsert（URLから公開日・セッションを解析して保存）
       const doc = await upsertDocument({
         municipalityId: ctx.municipalityId,
         sourceId: ctx.sourceId,
         url: link.url,
         title: link.title,
         sectionKind: link.sectionKind,
+        publishedOn: parseDateFromUrl(link.url),
+        sessionId,
       });
 
       // 既にダウンロード済みならスキップ
