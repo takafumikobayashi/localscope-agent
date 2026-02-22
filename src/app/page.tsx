@@ -9,12 +9,6 @@ export const metadata: Metadata = {
   title: "LocalScope Agent — 地方議会を、透明に。",
   description:
     "公開されている ≠ 使える。議事録 PDF を発言単位の構造化データに変換し、AI 分析・多角可視化・Agent API を提供するシビックインテリジェンス基盤。",
-  openGraph: {
-    title: "LocalScope Agent — 地方議会を、透明に。",
-    description:
-      "公開されている ≠ 使える。議事録 PDF を発言単位の構造化データに変換し、AI 分析・多角可視化・Agent API を提供するシビックインテリジェンス基盤。",
-    type: "website",
-  },
   twitter: {
     title: "LocalScope Agent — 地方議会を、透明に。",
     description:
