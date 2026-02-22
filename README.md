@@ -7,7 +7,7 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Vitest](https://img.shields.io/badge/Vitest-6E9F18?logo=vitest&logoColor=white)](https://vitest.dev/)
 
-地方自治体の公開会議録（PDF）を収集し、テキスト抽出・発言分割・発言者紐付けを行って、機械可読なデータへ変換するプロジェクトです。AI要約・単語頻度分析・Web UIによる可視化まで一貫して提供します。
+地方自治体の公開会議録（PDF）を収集し、テキスト抽出・発言分割・発言者紐付けを行って、機械可読なデータへ変換するプロジェクトです。AI要約・議題抽出・Web UIによる可視化まで一貫して提供します。
 
 ## 現在の実装範囲
 
@@ -23,7 +23,7 @@
 - `speaker_aliases` への alias 自動登録（出席者由来）
 - `speeches` への保存（解決済み `speaker_id` 紐付け）
 - AI要約バッチ生成（GPT-4o、チャンク分割＋統合対応）
-- 単語頻度計算（kuromoji による日本語形態素解析）
+- 議題・審議結果抽出（GPT-4o、会議種別ごとのプロンプト対応）
 - Web UI（ダッシュボード・議事録一覧・詳細・Analytics）
 
 ## アーキテクチャ
@@ -59,8 +59,7 @@
 - PostgreSQL（Supabase想定）
 - Cheerio（スクレイピング）
 - pdfjs-dist（PDFテキスト抽出）
-- AI SDK (`ai`, `@ai-sdk/openai`) + GPT-4o（AI要約）
-- kuromoji（日本語形態素解析・単語頻度）
+- AI SDK (`ai`, `@ai-sdk/openai`) + GPT-4o（AI要約・議題抽出）
 - recharts（グラフ描画）
 - Vitest（ユニットテスト）
 
@@ -138,10 +137,10 @@ npm run extract
 npm run summarize
 ```
 
-1. 単語頻度計算
+1. 議題・審議結果抽出
 
 ```bash
-npm run compute-words
+npm run extract-agenda
 ```
 
 ## npm scripts 一覧
@@ -162,8 +161,22 @@ npm run compute-words
   `status=downloaded` の文書を対象に抽出・パース・DB保存
 - `npm run summarize`:
   `status=parsed` かつ未要約の文書を対象に GPT-4o で要約生成
-- `npm run compute-words`:
-  全 `speeches` を kuromoji で形態素解析し `word_frequencies` に保存
+- `npm run extract-agenda`:
+  `document_summaries` が存在する文書を対象に GPT-4o で議題・審議結果を抽出し `agendaItems` に保存
+- `npm run extract-questions`:
+  一般質問データを抽出
+- `npm run retry-questions`:
+  失敗した一般質問抽出をリトライ
+- `npm run reextract-questions`:
+  一般質問を再抽出
+- `npm run normalize-questioner-names`:
+  質問者名の名寄せ
+- `npm run backfill-published-on`:
+  `publishedOn` の遡及補完
+- `npm run backfill-titles`:
+  タイトルの遡及補完
+- `npm run backfill-sessions`:
+  セッション情報の遡及補完
 - `npm run lint`:
   ESLint + Markdown lint
 - `npm run lint:fix`:
@@ -243,14 +256,17 @@ npm run compute-words
 - レート制限時は指数バックオフ（30s × 2^n）でリトライ（最大5回）
 - 結果を `document_summaries`（summaryText, topics, keyPoints, modelId, tokenCount）に保存
 
-### `npm run compute-words`
+### `npm run extract-agenda`
+
+対象:
+
+- `document_summaries` が存在し、`agendaItems` が未設定の文書
 
 処理:
 
-- 全 `speeches.speech_text` を kuromoji で形態素解析
-- 名詞・動詞・形容詞を抽出し、ストップワード除去
-- 単語・読み・品詞ごとに出現頻度を集計
-- `word_frequencies` テーブルを全件置換（upsert）
+- 会議種別（`committee` / `budget_committee` / `extra` / `regular`）に応じたプロンプトを選択
+- GPT-4o で発言テキストから議題・審議結果を抽出
+- 可決・否決・継続審査などの審議結果を構造化して `agendaItems` に保存
 
 ### 補助スクリプト（`package.json` 未登録）
 
@@ -300,9 +316,14 @@ npx tsx scripts/reparse.ts            # 再パース
 - `speakers` — 発言者マスタ（`UNIQUE(municipality_id, name_ja)`）
 - `speaker_aliases` — 発言者エイリアス辞書（`UNIQUE(municipality_id, alias_norm)`）
 - `speeches` — 発言データ
-- `document_summaries` — AI要約（summaryText, topics, keyPoints, modelId, tokenCount）
-- `word_frequencies` — 単語頻度（word, reading, partOfSpeech, count）
+- `document_summaries` — AI要約（summaryText, topics, keyPoints, generalQuestions, agendaItems, modelId, tokenCount）
 - `ingestion_runs` — 取り込み実行ログ
+
+`document_summaries.agendaItems`:
+
+- 会議種別ごとのプロンプトで GPT-4o が抽出した議題・審議結果を格納する JSON フィールド
+- 可決・否決・継続審査などの審議結果を含む
+- `committee` / `budget_committee` / `extra` / `regular` の4種別に対応
 
 `speaker_aliases.alias_type`:
 
@@ -341,18 +362,18 @@ npm test
 |---|---|
 | `/` | ダッシュボード — 総件数統計・直近議事録・頻出トピックチャート・発言者ランキング |
 | `/documents` | 議事録一覧 — 年度・会議種別フィルタ付き |
-| `/documents/[id]` | 議事録詳細 — AI要約・Key Points・発言タイムライン・発言者内訳 |
-| `/analytics` | Analytics — ワードクラウド・トピック推移（年度別）・発言者統計 |
+| `/documents/[id]` | 議事録詳細 — AI要約・Key Points・審議事項（可決/否決）・発言タイムライン・発言者内訳 |
+| `/analytics` | Analytics — トピック推移（年度別）・発言者統計 |
 
 ## 主要ディレクトリ
 
 - `docs/`: PRD / ERD / パース戦略 / ワークフロー
 - `prisma/`: スキーマとマイグレーション
-- `scripts/`: seed / ingest / import-local / extract / summarize / compute-word-frequencies / reparse / migrate-speakers
+- `scripts/`: seed / ingest / import-local / extract / summarize / extract-agenda / extract-questions / reparse / migrate-speakers など
 - `src/lib/ingestion/`: 収集・抽出・パース・発言者解決・DB処理
 - `src/lib/summarization/`: AI要約ロジック
 - `src/lib/db/`: ダッシュボード・文書・Analytics クエリ層
-- `src/components/`: UI コンポーネント（charts / documents / layout / ui）
+- `src/components/`: UI コンポーネント（charts / documents / dashboard / layout / ui）
 - `tests/unit/`: ユニットテスト
 - `src/app/`: Next.js アプリ（App Router）
 

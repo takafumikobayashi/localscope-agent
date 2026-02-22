@@ -2,6 +2,17 @@ import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Tag } from "@/components/ui/tag";
 
+interface GeneralQuestion {
+  questioner: string;
+  topic: string;
+}
+
+interface AgendaItem {
+  title: string;
+  result?: string;
+  notes?: string;
+}
+
 interface DocumentListItemProps {
   municipalityId: string;
   id: string;
@@ -11,6 +22,9 @@ interface DocumentListItemProps {
   topics: string[];
   fiscalYear?: number | null;
   sessionName?: string | null;
+  sessionType?: string | null;
+  generalQuestions?: GeneralQuestion[] | null;
+  agendaItems?: AgendaItem[] | null;
 }
 
 export function DocumentListItem({
@@ -22,6 +36,9 @@ export function DocumentListItem({
   topics,
   fiscalYear,
   sessionName,
+  sessionType,
+  generalQuestions,
+  agendaItems,
 }: DocumentListItemProps) {
   return (
     <Link href={`/${municipalityId}/documents/${id}`}>
@@ -58,6 +75,62 @@ export function DocumentListItem({
             {topics.map((t) => (
               <Tag key={t}>{t}</Tag>
             ))}
+          </div>
+        )}
+        {sessionType === "regular" && generalQuestions && generalQuestions.length > 0 && (
+          <div className="mt-3 border-t border-card-border pt-3">
+            <p className="font-mono text-[10px] text-muted uppercase tracking-wider mb-1.5">
+              一般質問
+            </p>
+            <ul className="space-y-0.5">
+              {generalQuestions.slice(0, 5).map((q, i) => (
+                <li key={i} className="flex items-baseline gap-2">
+                  <span className="font-mono text-[11px] text-muted-foreground shrink-0">
+                    {q.questioner}
+                  </span>
+                  <span className="font-mono text-[11px] text-foreground">
+                    {q.topic}
+                  </span>
+                </li>
+              ))}
+              {generalQuestions.length > 5 && (
+                <li className="font-mono text-[11px] text-muted">
+                  他{generalQuestions.length - 5}件
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
+        {agendaItems && agendaItems.length > 0 && (
+          <div className="mt-3 border-t border-card-border pt-3">
+            <p className="font-mono text-[10px] text-muted uppercase tracking-wider mb-1.5">
+              審議事項
+            </p>
+            <ul className="space-y-0.5">
+              {agendaItems.slice(0, 5).map((item, i) => (
+                <li key={i} className="flex items-baseline gap-2">
+                  <span className="font-mono text-[11px] text-foreground flex-1 min-w-0">
+                    {item.title}
+                  </span>
+                  {item.result && (
+                    <span
+                      className={`font-mono text-[11px] shrink-0 ${
+                        item.result === "否決"
+                          ? "text-red-400"
+                          : "text-accent"
+                      }`}
+                    >
+                      {item.result}
+                    </span>
+                  )}
+                </li>
+              ))}
+              {agendaItems.length > 5 && (
+                <li className="font-mono text-[11px] text-muted">
+                  他{agendaItems.length - 5}件
+                </li>
+              )}
+            </ul>
           </div>
         )}
       </Card>

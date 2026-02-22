@@ -21,6 +21,10 @@ export default async function DocumentDetailPage({ params }: Props) {
 
   const topics = (doc.summary?.topics ?? []) as string[];
   const keyPoints = (doc.summary?.keyPoints ?? []) as string[];
+  const generalQuestions = (doc.summary?.generalQuestions ?? []) as {
+    questioner: string;
+    topic: string;
+  }[];
 
   return (
     <>
@@ -50,6 +54,22 @@ export default async function DocumentDetailPage({ params }: Props) {
                     >
                       <span className="text-accent mt-0.5">-</span>
                       <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {generalQuestions.length > 0 && (
+              <div className="mt-4">
+                <h3 className="font-mono text-xs font-bold text-muted-foreground mb-2">
+                  一般質問
+                </h3>
+                <ul className="space-y-1">
+                  {generalQuestions.map((q, i) => (
+                    <li key={i} className="flex items-baseline gap-2 font-mono text-xs">
+                      <span className="text-muted-foreground shrink-0">{q.questioner}</span>
+                      <span className="text-foreground">{q.topic}</span>
                     </li>
                   ))}
                 </ul>

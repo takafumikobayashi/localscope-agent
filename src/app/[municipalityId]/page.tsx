@@ -4,14 +4,18 @@ import { Card } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
 import { Tag } from "@/components/ui/tag";
 import { PageHeader } from "@/components/ui/page-header";
-import { TopicFrequencyChart } from "@/components/charts/topic-frequency-chart";
 import { SpeakerRankingChart } from "@/components/charts/speaker-ranking-chart";
+import { SpeechCountChart } from "@/components/charts/speech-count-chart";
+import { TopicWordCloud } from "@/components/charts/topic-word-cloud";
+import { GeneralQuestionTopics } from "@/components/dashboard/general-question-topics";
 import {
   getDashboardStats,
   getRecentDocuments,
   getTopicFrequencies,
   getSpeakerRanking,
+  getGeneralQuestionTopics,
 } from "@/lib/db/dashboard";
+import { getSpeechCountByDocument } from "@/lib/db/analytics";
 import { getMunicipalityById } from "@/lib/db/municipalities";
 
 interface Props {
@@ -44,12 +48,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function DashboardPage({ params }: Props) {
   const { municipalityId } = await params;
 
-  const [stats, recentDocs, topicFreqs, speakerRanking] = await Promise.all([
-    getDashboardStats(municipalityId),
-    getRecentDocuments(municipalityId),
-    getTopicFrequencies(municipalityId),
-    getSpeakerRanking(municipalityId),
-  ]);
+  const [stats, recentDocs, topicFreqs, speakerRanking, speechCountByDoc, generalQuestionTopics] =
+    await Promise.all([
+      getDashboardStats(municipalityId),
+      getRecentDocuments(municipalityId),
+      getTopicFrequencies(municipalityId),
+      getSpeakerRanking(municipalityId),
+      getSpeechCountByDocument(municipalityId),
+      getGeneralQuestionTopics(municipalityId),
+    ]);
 
   return (
     <>
@@ -112,16 +119,35 @@ export default async function DashboardPage({ params }: Props) {
           </ul>
         </Card>
 
-        {/* Topic Frequency */}
+        {/* General Question Topics */}
         <Card className="md:col-span-3 animate-fade-in delay-2">
+          <h2 className="font-mono text-sm font-bold text-foreground mb-4">
+            一般質問 頻出テーマ
+          </h2>
+          <GeneralQuestionTopics
+            data={generalQuestionTopics}
+            municipalityId={municipalityId}
+          />
+        </Card>
+
+        {/* Topic Word Cloud */}
+        <Card className="md:col-span-6 animate-fade-in delay-3">
           <h2 className="font-mono text-sm font-bold text-foreground mb-4">
             頻出トピック
           </h2>
-          <TopicFrequencyChart data={topicFreqs} />
+          <TopicWordCloud data={topicFreqs} />
+        </Card>
+
+        {/* Speech Count by Document */}
+        <Card className="md:col-span-6 animate-fade-in delay-4">
+          <h2 className="font-mono text-sm font-bold text-foreground mb-4">
+            議事録別発言数
+          </h2>
+          <SpeechCountChart data={speechCountByDoc} />
         </Card>
 
         {/* Speaker Ranking */}
-        <Card className="md:col-span-6 animate-fade-in delay-3">
+        <Card className="md:col-span-6 animate-fade-in delay-4">
           <h2 className="font-mono text-sm font-bold text-foreground mb-4">
             発言者ランキング（上位15名）
           </h2>

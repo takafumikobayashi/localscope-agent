@@ -105,6 +105,7 @@ async function main() {
 
         await createSpeech({
           documentId: doc.id,
+          sessionId: doc.sessionId,
           speakerId: result.speakerId,
           speakerNameRaw: speech.speakerNameRaw,
           sequence: seq++,

@@ -10,7 +10,7 @@ import {
 
 interface Props {
   params: Promise<{ municipalityId: string }>;
-  searchParams: Promise<{ year?: string; type?: string }>;
+  searchParams: Promise<{ year?: string; type?: string; topic?: string; gq_topic?: string }>;
 }
 
 export default async function DocumentsPage({ params, searchParams }: Props) {
@@ -18,9 +18,11 @@ export default async function DocumentsPage({ params, searchParams }: Props) {
   const sp = await searchParams;
   const fiscalYear = sp.year ? parseInt(sp.year, 10) : undefined;
   const sessionType = sp.type || undefined;
+  const topic = sp.topic || undefined;
+  const gqTopic = sp.gq_topic || undefined;
 
   const [documents, fiscalYears, sessionTypes] = await Promise.all([
-    getDocumentList(municipalityId, { fiscalYear, sessionType }),
+    getDocumentList(municipalityId, { fiscalYear, sessionType, topic, gqTopic }),
     getAvailableFiscalYears(municipalityId),
     getAvailableSessionTypes(municipalityId),
   ]);
@@ -52,6 +54,17 @@ export default async function DocumentsPage({ params, searchParams }: Props) {
             topics={(doc.summary?.topics ?? []) as string[]}
             fiscalYear={doc.session?.fiscalYear}
             sessionName={doc.session?.sessionName}
+            sessionType={doc.session?.sessionType ?? null}
+            generalQuestions={
+              (doc.summary?.generalQuestions ?? null) as
+                | { questioner: string; topic: string }[]
+                | null
+            }
+            agendaItems={
+              (doc.summary?.agendaItems ?? null) as
+                | { title: string; result?: string; notes?: string }[]
+                | null
+            }
           />
         ))}
         {documents.length === 0 && (
