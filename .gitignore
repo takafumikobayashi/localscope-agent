@@ -143,3 +143,6 @@ src/generated/
 
 # Downloaded PDFs
 data/
+
+# macOS
+.DS_Store

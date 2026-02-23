@@ -8,12 +8,12 @@ const WAIT_MS = 10_000;
 async function main() {
   console.log("=== Extract General Questions ===");
 
-  // 定例会 + parsed + summary あり のドキュメントを全件取得
+  // 定例会 + parsed + summary あり + generalQuestions 未抽出 のドキュメントを取得
   const docs = await prisma.document.findMany({
     where: {
       status: "parsed",
       session: { sessionType: "regular" },
-      summary: { isNot: null },
+      summary: { is: { generalQuestions: { equals: Prisma.DbNull } } },
     },
     include: {
       municipality: { select: { nameJa: true } },
