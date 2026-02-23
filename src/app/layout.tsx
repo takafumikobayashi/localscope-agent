@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import "./globals.css";
 import { DisclaimerBanner } from "@/components/layout/disclaimer-banner";
 
@@ -60,6 +61,7 @@ export default function RootLayout({
       >
         {children}
         <DisclaimerBanner />
+        <GoogleAnalytics gaId="G-6SD9WFQFFV" />
       </body>
     </html>
   );
