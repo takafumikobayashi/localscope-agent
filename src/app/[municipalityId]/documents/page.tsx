@@ -10,7 +10,7 @@ import {
 
 interface Props {
   params: Promise<{ municipalityId: string }>;
-  searchParams: Promise<{ year?: string; type?: string; topic?: string; gq_topic?: string }>;
+  searchParams: Promise<{ year?: string; type?: string; topic?: string; gq_topic?: string; show_empty?: string }>;
 }
 
 export default async function DocumentsPage({ params, searchParams }: Props) {
@@ -20,12 +20,17 @@ export default async function DocumentsPage({ params, searchParams }: Props) {
   const sessionType = sp.type || undefined;
   const topic = sp.topic || undefined;
   const gqTopic = sp.gq_topic || undefined;
+  const showEmpty = sp.show_empty === "1";
 
-  const [documents, fiscalYears, sessionTypes] = await Promise.all([
+  const [allDocuments, fiscalYears, sessionTypes] = await Promise.all([
     getDocumentList(municipalityId, { fiscalYear, sessionType, topic, gqTopic }),
     getAvailableFiscalYears(municipalityId),
     getAvailableSessionTypes(municipalityId),
   ]);
+
+  const documents = showEmpty
+    ? allDocuments
+    : allDocuments.filter((d) => d._count.speeches > 0);
 
   return (
     <>
@@ -39,6 +44,7 @@ export default async function DocumentsPage({ params, searchParams }: Props) {
           municipalityId={municipalityId}
           fiscalYears={fiscalYears}
           sessionTypes={sessionTypes}
+          showEmpty={showEmpty}
         />
       </Suspense>
 

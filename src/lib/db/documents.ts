@@ -47,7 +47,7 @@ export async function getDocumentList(
 
   return prisma.document.findMany({
     where,
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ publishedOn: "desc" }, { createdAt: "desc" }],
     include: {
       session: { select: { fiscalYear: true, sessionName: true, sessionType: true } },
       summary: { select: { summaryText: true, topics: true, generalQuestions: true, agendaItems: true } },

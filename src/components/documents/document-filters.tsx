@@ -7,6 +7,7 @@ interface DocumentFiltersProps {
   municipalityId: string;
   fiscalYears: number[];
   sessionTypes: string[];
+  showEmpty?: boolean;
 }
 
 const sessionTypeLabels: Record<string, string> = {
@@ -21,6 +22,7 @@ export function DocumentFilters({
   municipalityId,
   fiscalYears,
   sessionTypes,
+  showEmpty = false,
 }: DocumentFiltersProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -68,6 +70,25 @@ export function DocumentFilters({
           </option>
         ))}
       </select>
+
+      <button
+        onClick={() => updateFilter("show_empty", showEmpty ? "" : "1")}
+        className="flex items-center gap-2 font-mono text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        {/* トグルスイッチ */}
+        <span
+          className={`relative inline-flex h-4 w-7 shrink-0 rounded-full border transition-colors duration-200 ${
+            showEmpty ? "bg-accent border-accent" : "bg-transparent border-card-border"
+          }`}
+        >
+          <span
+            className={`absolute top-0.5 h-3 w-3 rounded-full transition-transform duration-200 ${
+              showEmpty ? "translate-x-3.5 bg-background" : "translate-x-0.5 bg-muted-foreground"
+            }`}
+          />
+        </span>
+        発言なしを表示
+      </button>
     </div>
   );
 }

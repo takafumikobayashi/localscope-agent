@@ -55,7 +55,7 @@ async function main() {
       const estimated = estimateTokens(formatSpeeches(doc.speeches));
       console.log(`  PROCESSING: ${doc.title} (${doc.speeches.length} speeches, ~${estimated} tokens)`);
 
-      const result = await summarizeDocument(doc.speeches);
+      const result = await summarizeDocument(doc.speeches, doc.municipality.nameJa);
 
       await upsertDocumentSummary({
         documentId: doc.id,

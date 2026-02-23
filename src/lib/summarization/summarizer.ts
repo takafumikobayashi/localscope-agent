@@ -14,7 +14,12 @@ export interface AgendaItem {
   notes?: string;
 }
 
-const SYSTEM_PROMPT = `あなたは日本の地方議会（安芸高田市）の議事録を要約する専門家です。
+// ============================================================
+// プロンプトビルダー（自治体名を動的に埋め込む）
+// ============================================================
+
+function buildSystemPrompt(municipalityName: string): string {
+  return `あなたは日本の地方議会（${municipalityName}）の議事録を要約する専門家です。
 以下の議事録から、次の情報をJSON形式で出力してください:
 1. summary: 会議全体の要約（300-500字）
 2. topics: 議論されたテーマ一覧（配列）
@@ -22,19 +27,54 @@ const SYSTEM_PROMPT = `あなたは日本の地方議会（安芸高田市）の
 
 出力は以下のJSON形式のみで返してください:
 {"summary": "...", "topics": ["..."], "key_points": ["..."]}`;
+}
 
-const CHUNK_PROMPT = `あなたは日本の地方議会（安芸高田市）の議事録を要約する専門家です。
+function buildChunkPrompt(municipalityName: string): string {
+  return `あなたは日本の地方議会（${municipalityName}）の議事録を要約する専門家です。
 以下は長い議事録の一部分です。この部分の内容を要約してください。
 これは部分要約であり、後で他の部分と統合されます。
 
 出力は以下のJSON形式のみで返してください:
 {"summary": "...", "topics": ["..."], "key_points": ["..."]}`;
+}
 
-const MERGE_PROMPT = `あなたは日本の地方議会（安芸高田市）の議事録を要約する専門家です。
+function buildMergePrompt(municipalityName: string): string {
+  return `あなたは日本の地方議会（${municipalityName}）の議事録を要約する専門家です。
 以下は同じ会議の議事録を分割して要約したものです。これらを統合して、1つの要約を作成してください。
 
 出力は以下のJSON形式のみで返してください:
 {"summary": "...(300-500字)", "topics": ["..."], "key_points": ["..."]}`;
+}
+
+function buildGeneralQuestionsPrompt(municipalityName: string): string {
+  return `あなたは日本の地方議会（${municipalityName}）の議事録を分析する専門家です。
+以下は${municipalityName}議会定例会の議事録です。
+「一般質問」として行われた各議員の質問を抽出してください。
+一般質問とは: 議員が市政各事項について市長・行政に質問し答弁を得る場です。
+各質問について questioner（質問議員のフルネーム）と topic（質問テーマ、20字以内）を抽出してください。
+
+【重要】questioner には必ず姓と名を含むフルネームを記載してください。
+議事録中に「○○議員」のような呼称しか登場しない場合でも、文脈や他の箇所から判断してフルネームを補完してください。
+フルネームが特定できない場合のみ「姓 議員」の形式を使用してください。
+
+出力形式: {"general_questions": [{"questioner": "田邊 裕哉", "topic": "地域公共交通について"}, ...]}
+一般質問がない場合は {"general_questions": []} を返してください。`;
+}
+
+function buildAgendaPrompt(municipalityName: string, sessionType: string): string {
+  const base = `あなたは日本の地方議会（${municipalityName}）の議事録を分析する専門家です。`;
+  const footer = `出力形式（JSONのみ）:\n{"agenda_items": [{"title": "議案第XX号 ...", "result": "可決", "notes": "..."}]}\n審議事項がなければ {"agenda_items": []} を返してください。`;
+
+  const body: Record<string, string> = {
+    committee: `以下は委員会議事録です。審査された議案・案件を抽出してください。\n各議案について title（議案名）、result（審査結果: 可決/否決/継続審査/承認 など）、notes（主な質疑・補足、省略可）を抽出してください。`,
+    budget_committee: `以下は予算決算委員会議事録です。審査された議案・予算案・決算案を抽出してください。\n各議案について title（議案名）、result（審査結果: 可決/否決/継続審査/承認 など）、notes（主な質疑・補足、省略可）を抽出してください。`,
+    extra: `以下は臨時会議事録です。審議された議案と決議内容を抽出してください。\n各議案について title（議案名）、result（審査結果: 可決/否決/継続審査/承認 など）、notes（主な質疑・補足、省略可）を抽出してください。`,
+    regular: `以下は定例会議事録です。一般質問を除いた議案審議・決議事項を抽出してください。\n各議案について title（議案名）、result（審査結果: 可決/否決/継続審査/承認 など）、notes（主な質疑・補足、省略可）を抽出してください。`,
+    other: `以下は議会関連会議の議事録です。審議・報告された議案・案件を抽出してください。\n各議案について title（議案名）、result（審査結果、省略可）、notes（主な内容・補足、省略可）を抽出してください。`,
+  };
+
+  return `${base}\n${body[sessionType] ?? body["other"]}\n${footer}`;
+}
 
 /** トークン数の概算（日本語: 文字数 × 0.5） */
 export function estimateTokens(text: string): number {
@@ -151,12 +191,13 @@ export function splitIntoChunks(
  */
 export async function summarizeDocument(
   speeches: { speakerNameRaw: string; speechText: string }[],
+  municipalityName = "日本の地方自治体",
 ): Promise<SummaryResult> {
   const fullText = formatSpeeches(speeches);
   const estimated = estimateTokens(fullText);
 
   if (estimated <= TOKEN_THRESHOLD) {
-    const { parsed, tokens } = await callLLM(SYSTEM_PROMPT, fullText);
+    const { parsed, tokens } = await callLLM(buildSystemPrompt(municipalityName), fullText);
     return {
       summary: parsed.summary,
       topics: parsed.topics,
@@ -173,7 +214,7 @@ export async function summarizeDocument(
   for (let i = 0; i < chunks.length; i++) {
     const text = formatSpeeches(chunks[i]);
     console.log(`    chunk ${i + 1}/${chunks.length} (~${estimateTokens(text)} tokens)`);
-    const r = await callLLM(CHUNK_PROMPT, text);
+    const r = await callLLM(buildChunkPrompt(municipalityName), text);
     chunkResults.push(r);
     totalTokens += r.tokens;
     if (i < chunks.length - 1) {
@@ -198,7 +239,7 @@ export async function summarizeDocument(
   const mergeInput = chunkResults
     .map((r, i) => `## パート${i + 1}の要約\n${JSON.stringify(r.parsed, null, 2)}`)
     .join("\n\n");
-  const merged = await callLLM(MERGE_PROMPT, mergeInput);
+  const merged = await callLLM(buildMergePrompt(municipalityName), mergeInput);
   totalTokens += merged.tokens;
 
   return {
@@ -210,13 +251,16 @@ export async function summarizeDocument(
 }
 
 /** 単一テキストから一般質問を抽出する内部関数 */
-async function extractGeneralQuestionsFromText(text: string): Promise<GeneralQuestion[]> {
+async function extractGeneralQuestionsFromText(
+  text: string,
+  municipalityName: string,
+): Promise<GeneralQuestion[]> {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       const result = await generateText({
         model: openai(MODEL_ID),
         messages: [
-          { role: "system", content: GENERAL_QUESTIONS_SYSTEM_PROMPT },
+          { role: "system", content: buildGeneralQuestionsPrompt(municipalityName) },
           { role: "user", content: text },
         ],
         providerOptions: {
@@ -250,25 +294,13 @@ async function extractGeneralQuestionsFromText(text: string): Promise<GeneralQue
   throw new Error("Unreachable");
 }
 
-const GENERAL_QUESTIONS_SYSTEM_PROMPT = `あなたは日本の地方議会（安芸高田市）の議事録を分析する専門家です。
-以下は安芸高田市議会定例会の議事録です。
-「一般質問」として行われた各議員の質問を抽出してください。
-一般質問とは: 議員が市政各事項について市長・行政に質問し答弁を得る場です。
-各質問について questioner（質問議員のフルネーム）と topic（質問テーマ、20字以内）を抽出してください。
-
-【重要】questioner には必ず姓と名を含むフルネームを記載してください。
-議事録中に「○○議員」のような呼称しか登場しない場合でも、文脈や他の箇所から判断してフルネームを補完してください。
-フルネームが特定できない場合のみ「姓 議員」の形式を使用してください。
-
-出力形式: {"general_questions": [{"questioner": "田邊 裕哉", "topic": "地域公共交通について"}, ...]}
-一般質問がない場合は {"general_questions": []} を返してください。`;
-
 /**
  * 定例会議事録から一般質問を抽出する
  * トークン超過時は最初のチャンクのみ使用（一般質問は冒頭に集中するため）
  */
 export async function extractGeneralQuestions(
   speeches: { speakerNameRaw: string; speechText: string }[],
+  municipalityName = "日本の地方自治体",
 ): Promise<GeneralQuestion[]> {
   const fullText = formatSpeeches(speeches);
   const estimated = estimateTokens(fullText);
@@ -279,7 +311,7 @@ export async function extractGeneralQuestions(
       : formatSpeeches(splitIntoChunks(speeches)[0]);
 
   try {
-    return await extractGeneralQuestionsFromText(targetText);
+    return await extractGeneralQuestionsFromText(targetText, municipalityName);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     throw new Error(`extractGeneralQuestions failed. Last error: ${msg}`);
@@ -296,6 +328,7 @@ export async function extractGeneralQuestionsAllChunksMerged(
   speeches: { speakerNameRaw: string; speechText: string }[],
   chunkTokenLimit = 4_000,
   chunkWaitMs = 10_000,
+  municipalityName = "日本の地方自治体",
 ): Promise<GeneralQuestion[]> {
   const chunks: { speakerNameRaw: string; speechText: string }[][] = [];
   let current: { speakerNameRaw: string; speechText: string }[] = [];
@@ -330,7 +363,7 @@ export async function extractGeneralQuestionsAllChunksMerged(
     console.log(`    chunk ${i + 1}/${chunks.length} (~${estimateTokens(text)} tokens)`);
 
     try {
-      const questions = await extractGeneralQuestionsFromText(text);
+      const questions = await extractGeneralQuestionsFromText(text, municipalityName);
       if (questions.length > 0) {
         let newCount = 0;
         for (const q of questions) {
@@ -362,52 +395,6 @@ export async function extractGeneralQuestionsAllChunksMerged(
   return allQuestions;
 }
 
-// ============================================================
-// Agenda Items Extraction
-// ============================================================
-
-const AGENDA_SYSTEM_PROMPTS: Record<string, string> = {
-  committee: `あなたは日本の地方議会（安芸高田市）の議事録を分析する専門家です。
-以下は委員会議事録です。審査された議案・案件を抽出してください。
-各議案について title（議案名）、result（審査結果: 可決/否決/継続審査/承認 など）、notes（主な質疑・補足、省略可）を抽出してください。
-出力形式（JSONのみ）:
-{"agenda_items": [{"title": "議案第XX号 ...", "result": "可決", "notes": "..."}]}
-審議事項がなければ {"agenda_items": []} を返してください。`,
-
-  budget_committee: `あなたは日本の地方議会（安芸高田市）の議事録を分析する専門家です。
-以下は予算決算委員会議事録です。審査された議案・予算案・決算案を抽出してください。
-各議案について title（議案名）、result（審査結果: 可決/否決/継続審査/承認 など）、notes（主な質疑・補足、省略可）を抽出してください。
-出力形式（JSONのみ）:
-{"agenda_items": [{"title": "議案第XX号 ...", "result": "可決", "notes": "..."}]}
-審議事項がなければ {"agenda_items": []} を返してください。`,
-
-  extra: `あなたは日本の地方議会（安芸高田市）の議事録を分析する専門家です。
-以下は臨時会議事録です。審議された議案と決議内容を抽出してください。
-各議案について title（議案名）、result（審査結果: 可決/否決/継続審査/承認 など）、notes（主な質疑・補足、省略可）を抽出してください。
-出力形式（JSONのみ）:
-{"agenda_items": [{"title": "議案第XX号 ...", "result": "可決", "notes": "..."}]}
-審議事項がなければ {"agenda_items": []} を返してください。`,
-
-  regular: `あなたは日本の地方議会（安芸高田市）の議事録を分析する専門家です。
-以下は定例会議事録です。一般質問を除いた議案審議・決議事項を抽出してください。
-各議案について title（議案名）、result（審査結果: 可決/否決/継続審査/承認 など）、notes（主な質疑・補足、省略可）を抽出してください。
-出力形式（JSONのみ）:
-{"agenda_items": [{"title": "議案第XX号 ...", "result": "可決", "notes": "..."}]}
-審議事項がなければ {"agenda_items": []} を返してください。`,
-
-  other: `あなたは日本の地方議会（安芸高田市）の議事録を分析する専門家です。
-以下は議会関連会議の議事録です。審議・報告された議案・案件を抽出してください。
-各議案について title（議案名）、result（審査結果、省略可）、notes（主な内容・補足、省略可）を抽出してください。
-出力形式（JSONのみ）:
-{"agenda_items": [{"title": "...", "result": "...", "notes": "..."}]}
-審議事項がなければ {"agenda_items": []} を返してください。`,
-};
-
-/** セッション種別に対応する議題抽出プロンプトを取得 */
-function getAgendaSystemPrompt(sessionType: string): string {
-  return AGENDA_SYSTEM_PROMPTS[sessionType] ?? AGENDA_SYSTEM_PROMPTS["other"];
-}
-
 /**
  * 議事録から議題・審議事項を抽出する
  * 先頭 TOKEN_THRESHOLD トークン分の発言を使用（議案は冒頭に集中するため）
@@ -415,6 +402,7 @@ function getAgendaSystemPrompt(sessionType: string): string {
 export async function extractAgendaItems(
   speeches: { speakerNameRaw: string; speechText: string }[],
   sessionType: string,
+  municipalityName = "日本の地方自治体",
 ): Promise<AgendaItem[]> {
   const fullText = formatSpeeches(speeches);
   const estimated = estimateTokens(fullText);
@@ -423,7 +411,7 @@ export async function extractAgendaItems(
       ? fullText
       : formatSpeeches(splitIntoChunks(speeches)[0]);
 
-  const systemPrompt = getAgendaSystemPrompt(sessionType);
+  const systemPrompt = buildAgendaPrompt(municipalityName, sessionType);
 
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
@@ -472,6 +460,7 @@ export async function extractGeneralQuestionsAllChunks(
   speeches: { speakerNameRaw: string; speechText: string }[],
   chunkTokenLimit = 4_000,
   chunkWaitMs = 10_000,
+  municipalityName = "日本の地方自治体",
 ): Promise<GeneralQuestion[]> {
   // chunkTokenLimit でチャンク分割
   const chunks: { speakerNameRaw: string; speechText: string }[][] = [];
@@ -497,7 +486,7 @@ export async function extractGeneralQuestionsAllChunks(
     console.log(`    chunk ${i + 1}/${chunks.length} (~${estimateTokens(text)} tokens)`);
 
     try {
-      const questions = await extractGeneralQuestionsFromText(text);
+      const questions = await extractGeneralQuestionsFromText(text, municipalityName);
       if (questions.length > 0) {
         console.log(`    found ${questions.length} question(s) in chunk ${i + 1}`);
         return questions;
