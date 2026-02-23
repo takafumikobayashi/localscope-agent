@@ -11,6 +11,7 @@ export async function getUnsummarizedDocuments() {
       summary: null,
     },
     include: {
+      municipality: { select: { nameJa: true } },
       speeches: {
         orderBy: { sequence: "asc" },
         select: { speakerNameRaw: true, speechText: true },
@@ -27,6 +28,7 @@ export async function getAllParsedDocuments() {
   return prisma.document.findMany({
     where: { status: "parsed" },
     include: {
+      municipality: { select: { nameJa: true } },
       speeches: {
         orderBy: { sequence: "asc" },
         select: { speakerNameRaw: true, speechText: true },

@@ -16,6 +16,7 @@ async function main() {
       summary: { isNot: null },
     },
     include: {
+      municipality: { select: { nameJa: true } },
       summary: { select: { generalQuestions: true } },
       speeches: {
         orderBy: { sequence: "asc" },
@@ -47,6 +48,7 @@ async function main() {
       console.log(`  PROCESSING: ${doc.title} (${doc.speeches.length} speeches)`);
       const questions = await extractGeneralQuestions(
         doc.speeches.map((s) => ({ speakerNameRaw: s.speakerNameRaw, speechText: s.speechText })),
+        doc.municipality.nameJa,
       );
 
       await prisma.documentSummary.update({

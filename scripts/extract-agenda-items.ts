@@ -20,6 +20,7 @@ async function main() {
       ...(targetDocId ? { id: targetDocId } : {}),
     },
     include: {
+      municipality: { select: { nameJa: true } },
       session: { select: { sessionType: true } },
       summary: { select: { agendaItems: true } },
       speeches: {
@@ -58,6 +59,7 @@ async function main() {
       const items = await extractAgendaItems(
         doc.speeches.map((s) => ({ speakerNameRaw: s.speakerNameRaw, speechText: s.speechText })),
         sessionType,
+        doc.municipality.nameJa,
       );
 
       await prisma.documentSummary.update({
